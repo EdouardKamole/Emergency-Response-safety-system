@@ -99,8 +99,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                     ? '${currentLocation.substring(0, 30)}...'
                                     : currentLocation,
                                 style: GoogleFonts.poppins(
-                                  fontSize: 13.sp,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.w500,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                                 maxLines: 1,
@@ -130,6 +130,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   style: GoogleFonts.poppins(
                     fontSize: 20.sp,
                     fontWeight: FontWeight.w600,
+                    color: Colors.black54,
                   ),
                 ),
               ),
@@ -144,6 +145,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: GoogleFonts.poppins(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
+                        color: Colors.black54,
                       ),
                     ),
                     SizedBox(width: 4.w),
@@ -161,12 +163,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       style: GoogleFonts.poppins(
                         fontSize: 16.sp,
                         fontWeight: FontWeight.w600,
+                        color: Colors.black54,
                       ),
                     ),
                   ],
                 ),
               ),
-              SizedBox(height: 50.h),
+              SizedBox(height: 70.h),
               Align(
                 alignment: Alignment.center,
                 child: Stack(

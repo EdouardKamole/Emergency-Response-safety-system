@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:emergency_app/screens/signup_screen.dart';
-// import 'package:sos_app/screens/welcome_screen.dart';
 
 void main() {
   runApp(const MyApp());

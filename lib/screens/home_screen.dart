@@ -34,11 +34,11 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: BottomNavigationBar(
         items: [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home, size: 18),
+            icon: Icon(Icons.local_hospital, size: 18),
             label: 'Emergency',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.people, size: 18),
+            icon: Icon(Icons.monitor_heart, size: 18),
             label: 'Rescue',
           ),
         ],

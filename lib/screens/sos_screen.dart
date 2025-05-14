@@ -17,7 +17,7 @@ class SosScreen extends StatefulWidget {
 
 class _SosScreenState extends State<SosScreen> {
   int selectedIndex = -1;
-  String currentLocation = "Fetching location...";
+  String currentLocation = "Fetching Location...";
   List<Map<String, dynamic>> gridItems = [
     {'icon': Icons.medical_services, 'label': 'Medical'},
     {'icon': Icons.local_police, 'label': 'Police'},
@@ -90,17 +90,7 @@ class _SosScreenState extends State<SosScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 0,
-        leadingWidth: 40.w,
-        title: Text(
-          "Emergency Report",
-          style: GoogleFonts.poppins(
-            fontSize: 20.sp,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
+      appBar: AppBar(titleSpacing: 0, leadingWidth: 40.w),
       body: SafeArea(
         child: Container(
           margin: EdgeInsets.symmetric(horizontal: 20),
@@ -110,22 +100,23 @@ class _SosScreenState extends State<SosScreen> {
               Align(
                 alignment: Alignment.center,
                 child: Text(
-                  "Select Emergency Type",
+                  "Select Emergency",
                   style: GoogleFonts.poppins(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
                   ),
                 ),
               ),
-              SizedBox(height: 10.h),
+              SizedBox(height: 30.h),
               GridView.builder(
                 shrinkWrap: true,
                 physics: NeverScrollableScrollPhysics(),
                 itemCount: gridItems.length,
                 gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 3,
-                  crossAxisSpacing: 4.w,
-                  mainAxisSpacing: 2.h,
+                  crossAxisSpacing: 10.w,
+                  mainAxisSpacing: 8.h,
                   childAspectRatio: 1.0,
                 ),
                 itemBuilder: (context, index) {
@@ -135,58 +126,53 @@ class _SosScreenState extends State<SosScreen> {
                         selectedIndex = index;
                       });
                     },
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          // Added Container for background
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color:
-                                selectedIndex == index
-                                    ? Colors.red
-                                    : Colors
-                                        .grey
-                                        .shade200, // Light grey background
-                          ),
-                          padding: EdgeInsets.all(8.w),
-                          child: Icon(
+                    child: Card(
+                      elevation: 2,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10.r),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
                             gridItems[index]['icon'],
-                            size: 35.sp,
-                            color:
-                                selectedIndex == index
-                                    ? Colors.white
-                                    : Colors.black,
-                          ),
-                        ),
-                        SizedBox(height: 2.h),
-                        Text(
-                          gridItems[index]['label'],
-                          style: GoogleFonts.poppins(
-                            fontSize: 14.sp,
+                            size: 30.sp,
                             color:
                                 selectedIndex == index
                                     ? Colors.red
-                                    : Colors.black,
+                                    : Colors.black87,
                           ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                          SizedBox(height: 5.h),
+                          Text(
+                            gridItems[index]['label'],
+                            style: GoogleFonts.poppins(
+                              fontSize: 14.sp,
+                              fontWeight: FontWeight.w500,
+                              color:
+                                  selectedIndex == index
+                                      ? Colors.red
+                                      : Colors.black87,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },
               ),
-              SizedBox(height: 10.h),
+              SizedBox(height: 30.h),
               Text(
                 "Location",
                 style: GoogleFonts.poppins(
                   fontSize: 15.sp,
                   fontWeight: FontWeight.w600,
+                  color: Colors.black87,
                 ),
               ),
               Row(
                 children: [
-                  Icon(Icons.location_on_outlined, size: 17.sp),
+                  Icon(Icons.location_pin, size: 20.sp, color: Colors.red),
                   SizedBox(width: 3.w),
                   Expanded(
                     child: Text(
@@ -194,7 +180,7 @@ class _SosScreenState extends State<SosScreen> {
                               50 // Check if the text is longer than 50 characters
                           ? '${currentLocation.substring(0, 50)}...' // Truncate and add ellipsis
                           : currentLocation, // Otherwise, show the full text
-                      style: GoogleFonts.poppins(fontSize: 13.sp),
+                      style: GoogleFonts.poppins(fontSize: 15.sp),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -205,7 +191,7 @@ class _SosScreenState extends State<SosScreen> {
                     child: Text(
                       "Change",
                       style: GoogleFonts.poppins(
-                        fontSize: 14.sp,
+                        fontSize: 15.sp,
                         color: Colors.red,
                         fontWeight: FontWeight.w600,
                       ),
@@ -213,13 +199,27 @@ class _SosScreenState extends State<SosScreen> {
                   ),
                 ],
               ),
-              SizedBox(height: 20.h),
-              Text(
-                "Upload Evidence",
-                style: GoogleFonts.poppins(
-                  fontSize: 15.sp,
-                  fontWeight: FontWeight.w600,
-                ),
+              SizedBox(height: 15.h),
+              Row(
+                children: [
+                  Text(
+                    "Upload media",
+                    style: GoogleFonts.poppins(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  SizedBox(width: 3.w),
+                  Text(
+                    "(optional)",
+                    style: GoogleFonts.poppins(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black45,
+                    ),
+                  ),
+                ],
               ),
               SizedBox(height: 10.h),
               // Row(
@@ -249,9 +249,20 @@ class _SosScreenState extends State<SosScreen> {
                 width: double.infinity,
                 child: ElevatedButton(
                   onPressed: () {},
+                  style: ElevatedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    backgroundColor: Colors.red,
+                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+                  ),
                   child: Text(
                     "Submit",
-                    style: GoogleFonts.poppins(fontSize: 16.sp),
+                    style: GoogleFonts.poppins(
+                      fontSize: 16.sp,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
@@ -287,6 +298,7 @@ class _SosScreenState extends State<SosScreen> {
 
   void _showLocationDrawer(BuildContext context) {
     showModalBottomSheet(
+      isScrollControlled: true,
       context: context,
       builder: (BuildContext context) {
         return Container(
@@ -324,6 +336,7 @@ class _SosScreenState extends State<SosScreen> {
                   _showLocationInputDialog(context);
                 },
               ),
+              SizedBox(height: 50.h),
             ],
           ),
         );
