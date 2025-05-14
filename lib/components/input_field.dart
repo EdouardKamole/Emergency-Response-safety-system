@@ -1,0 +1,42 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_fonts/google_fonts.dart';
+
+class InputField extends StatelessWidget {
+  final String label;
+  final String hintText;
+
+  const InputField({Key? key, required this.label, required this.hintText})
+    : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.poppins(
+            fontSize: 13.sp,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        SizedBox(height: 8.h),
+        TextField(
+          style: GoogleFonts.poppins(fontSize: 14.sp),
+          decoration: InputDecoration(
+            hintText: hintText,
+            isDense: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10.r),
+            ),
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: 10.w,
+              vertical: 12.h,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
