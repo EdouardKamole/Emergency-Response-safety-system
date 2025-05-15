@@ -5,8 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:permission_handler/permission_handler.dart';
-// import 'package:image_picker/image_picker.dart';
-// import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:image_picker/image_picker.dart';
 
 class SosScreen extends StatefulWidget {
   const SosScreen({Key? key}) : super(key: key);
@@ -35,25 +34,20 @@ class _SosScreenState extends State<SosScreen> {
   @override
   void initState() {
     super.initState();
-    _requestLocationPermission(); // Request permission on init
+    _requestLocationPermission();
   }
 
   Future<void> _requestLocationPermission() async {
     var status = await Permission.location.status;
     if (status.isDenied) {
-      // We didn't ask for permission yet or the permission has been denied before but not permanently.
       if (await Permission.location.request().isGranted) {
-        // Permission granted
         _getCurrentLocation();
       } else {
-        // Permission denied
         print('Location permission denied');
       }
     } else if (status.isGranted) {
-      // Permission already granted
       _getCurrentLocation();
     } else if (status.isPermanentlyDenied) {
-      // Permission permanently denied, open app settings
       print('Location permission permanently denied');
       openAppSettings();
     }
@@ -87,186 +81,201 @@ class _SosScreenState extends State<SosScreen> {
     }
   }
 
+  Future<void> _pickImage() async {
+    final ImagePicker _picker = ImagePicker();
+    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      setState(() {
+        _image = File(image.path);
+        _video = null; // Clear video if image is selected
+      });
+    }
+  }
+
+  Future<void> _pickVideo() async {
+    final ImagePicker _picker = ImagePicker();
+    final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
+    if (video != null) {
+      setState(() {
+        _video = File(video.path);
+        _image = null; // Clear image if video is selected
+      });
+    }
+  }
+
+  void _clearMedia() {
+    setState(() {
+      _image = null;
+      _video = null;
+      _videoThumbnailPath = null;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    bool hasMedia = _image != null || _video != null;
+
     return Scaffold(
       appBar: AppBar(titleSpacing: 0, leadingWidth: 40.w),
       body: SafeArea(
         child: Container(
           margin: EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Align(
-                alignment: Alignment.center,
-                child: Text(
-                  "Select Emergency",
-                  style: GoogleFonts.poppins(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black87,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Align(
+                  alignment: Alignment.center,
+                  child: Text(
+                    "Select Emergency",
+                    style: GoogleFonts.poppins(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(height: 30.h),
-              GridView.builder(
-                shrinkWrap: true,
-                physics: NeverScrollableScrollPhysics(),
-                itemCount: gridItems.length,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 10.w,
-                  mainAxisSpacing: 8.h,
-                  childAspectRatio: 1.0,
-                ),
-                itemBuilder: (context, index) {
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        selectedIndex = index;
-                      });
-                    },
-                    child: Card(
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10.r),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            gridItems[index]['icon'],
-                            size: 30.sp,
-                            color:
-                                selectedIndex == index
-                                    ? Colors.red
-                                    : Colors.black87,
-                          ),
-                          SizedBox(height: 5.h),
-                          Text(
-                            gridItems[index]['label'],
-                            style: GoogleFonts.poppins(
-                              fontSize: 14.sp,
-                              fontWeight: FontWeight.w500,
+                SizedBox(height: 30.h),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: NeverScrollableScrollPhysics(),
+                  itemCount: gridItems.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 10.w,
+                    mainAxisSpacing: 8.h,
+                    childAspectRatio: 1.0,
+                  ),
+                  itemBuilder: (context, index) {
+                    return GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          selectedIndex = index;
+                        });
+                      },
+                      child: Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              gridItems[index]['icon'],
+                              size: 30.sp,
                               color:
                                   selectedIndex == index
                                       ? Colors.red
                                       : Colors.black87,
                             ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+                            SizedBox(height: 5.h),
+                            Text(
+                              gridItems[index]['label'],
+                              style: GoogleFonts.poppins(
+                                fontSize: 14.sp,
+                                fontWeight: FontWeight.w500,
+                                color:
+                                    selectedIndex == index
+                                        ? Colors.red
+                                        : Colors.black87,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: 30.h),
+                Text(
+                  "Location",
+                  style: GoogleFonts.poppins(
+                    fontSize: 15.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+                Row(
+                  children: [
+                    Icon(Icons.location_pin, size: 20.sp, color: Colors.red),
+                    SizedBox(width: 3.w),
+                    Expanded(
+                      child: Text(
+                        currentLocation.length > 50
+                            ? '${currentLocation.substring(0, 50)}...'
+                            : currentLocation,
+                        style: GoogleFonts.poppins(fontSize: 15.sp),
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                  );
-                },
-              ),
-              SizedBox(height: 30.h),
-              Text(
-                "Location",
-                style: GoogleFonts.poppins(
-                  fontSize: 15.sp,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
-              Row(
-                children: [
-                  Icon(Icons.location_pin, size: 20.sp, color: Colors.red),
-                  SizedBox(width: 3.w),
-                  Expanded(
-                    child: Text(
-                      currentLocation.length >
-                              50 // Check if the text is longer than 50 characters
-                          ? '${currentLocation.substring(0, 50)}...' // Truncate and add ellipsis
-                          : currentLocation, // Otherwise, show the full text
-                      style: GoogleFonts.poppins(fontSize: 15.sp),
-                      overflow: TextOverflow.ellipsis,
+                    TextButton(
+                      onPressed: () {
+                        _showLocationDrawer(context);
+                      },
+                      child: Text(
+                        "Change",
+                        style: GoogleFonts.poppins(
+                          fontSize: 15.sp,
+                          color: Colors.red,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
                     ),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      _showLocationDrawer(context);
-                    },
-                    child: Text(
-                      "Change",
+                  ],
+                ),
+                SizedBox(height: 15.h),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      "Upload media",
                       style: GoogleFonts.poppins(
-                        fontSize: 15.sp,
-                        color: Colors.red,
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    Text(
+                      "(optional)",
+                      style: GoogleFonts.poppins(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black45,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 10.h),
+                _buildMediaSection(),
+                SizedBox(height: 20.h),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () {},
+                    style: ElevatedButton.styleFrom(
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      backgroundColor: Colors.red,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 14,
+                      ),
+                    ),
+                    child: Text(
+                      "Submit",
+                      style: GoogleFonts.poppins(
+                        fontSize: 16.sp,
+                        color: Colors.white,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
-                ],
-              ),
-              SizedBox(height: 15.h),
-              Row(
-                children: [
-                  Text(
-                    "Upload media",
-                    style: GoogleFonts.poppins(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
-                  SizedBox(width: 3.w),
-                  Text(
-                    "(optional)",
-                    style: GoogleFonts.poppins(
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black45,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 10.h),
-              // Row(
-              //   mainAxisAlignment: MainAxisAlignment.spaceAround,
-              //   children: [
-              //     _buildMediaButton(
-              //       icon: Icons.image,
-              //       text: "Image",
-              //       onPressed: _pickImage,
-              //     ),
-              //     _buildMediaButton(
-              //       icon: Icons.videocam,
-              //       text: "Video",
-              //       onPressed: _pickVideo,
-              //     ),
-              //     _buildMediaButton(
-              //       icon: Icons.mic,
-              //       text: "Voice",
-              //       onPressed: _pickAudio,
-              //     ),
-              //   ],
-              // ),
-              SizedBox(height: 10.h),
-              _buildThumbnail(),
-              SizedBox(height: 20.h),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () {},
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    backgroundColor: Colors.red,
-                    padding: EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-                  ),
-                  child: Text(
-                    "Submit",
-                    style: GoogleFonts.poppins(
-                      fontSize: 16.sp,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -288,12 +297,140 @@ class _SosScreenState extends State<SosScreen> {
 
   Widget _buildThumbnail() {
     if (_image != null) {
-      return Image.file(_image!, height: 100.h);
-    } else if (_videoThumbnailPath != null) {
-      return Image.file(File(_videoThumbnailPath!), height: 100.h);
+      return Stack(
+        alignment: Alignment.topRight,
+        children: [
+          SizedBox(
+            height: 100.h,
+            width: 100.w,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8.r),
+              child: Image.file(_image!, fit: BoxFit.cover),
+            ),
+          ),
+          GestureDetector(
+            onTap: _clearMedia,
+            child: Container(
+              margin: EdgeInsets.all(5.0),
+              padding: EdgeInsets.all(2.0),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.7),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.close, size: 16.sp),
+            ),
+          ),
+        ],
+      );
+    } else if (_video != null) {
+      return Stack(
+        alignment: Alignment.topRight,
+        children: [
+          SizedBox(
+            height: 100.h,
+            width: 100.w,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8.r),
+              child: Container(
+                color: Colors.grey,
+                child: Center(
+                  child: Icon(Icons.videocam, size: 40.sp, color: Colors.white),
+                ),
+              ),
+            ),
+          ),
+          GestureDetector(
+            onTap: _clearMedia,
+            child: Container(
+              margin: EdgeInsets.all(5.0),
+              padding: EdgeInsets.all(2.0),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.7),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.close, size: 16.sp),
+            ),
+          ),
+        ],
+      );
     } else {
       return SizedBox.shrink();
     }
+  }
+
+  Widget _buildMediaSection() {
+    bool hasMedia = _image != null || _video != null;
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        _buildThumbnail(),
+        if (!hasMedia)
+          Row(
+            children: [
+              _buildMediaButton(
+                icon: Icons.image,
+                text: "Image",
+                onPressed: _pickImage,
+              ),
+              _buildMediaButton(
+                icon: Icons.videocam,
+                text: "Video",
+                onPressed: _pickVideo,
+              ),
+            ],
+          ),
+        if (hasMedia)
+          Padding(
+            padding: EdgeInsets.only(left: 10.w),
+            child: _buildMediaButton(
+              icon: Icons.add_a_photo,
+              text: "Add",
+              onPressed: () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (BuildContext context) {
+                    return DraggableScrollableSheet(
+                      initialChildSize: 0.3,
+                      minChildSize: 0.2,
+                      maxChildSize: 0.8,
+                      builder: (
+                        BuildContext context,
+                        ScrollController scrollController,
+                      ) {
+                        return SafeArea(
+                          child: ListView(
+                            controller: scrollController,
+                            children: <Widget>[
+                              ListTile(
+                                leading: new Icon(Icons.image),
+                                title: new Text('Pick Image'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _pickImage();
+                                },
+                              ),
+                              ListTile(
+                                leading: new Icon(Icons.videocam),
+                                title: new Text('Pick Video'),
+                                onTap: () {
+                                  Navigator.pop(context);
+                                  _pickVideo();
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+      ],
+    );
   }
 
   void _showLocationDrawer(BuildContext context) {
@@ -301,44 +438,51 @@ class _SosScreenState extends State<SosScreen> {
       isScrollControlled: true,
       context: context,
       builder: (BuildContext context) {
-        return Container(
-          padding: EdgeInsets.all(20.w),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                "Select Location",
-                style: GoogleFonts.poppins(
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.w600,
-                ),
+        return DraggableScrollableSheet(
+          initialChildSize: 0.3, // Initial height of the sheet
+          minChildSize: 0.2, // Minimum height of the sheet
+          maxChildSize: 0.8, // Maximum height of the sheet
+          builder: (BuildContext context, ScrollController scrollController) {
+            return Container(
+              padding: EdgeInsets.all(20.w),
+              child: ListView(
+                controller: scrollController,
+                children: [
+                  Text(
+                    "Select Location",
+                    style: GoogleFonts.poppins(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 20.h),
+                  ListTile(
+                    leading: Icon(Icons.gps_fixed),
+                    title: Text(
+                      "Use Current GPS Location",
+                      style: GoogleFonts.poppins(fontSize: 14.sp),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _requestLocationPermission();
+                    },
+                  ),
+                  ListTile(
+                    leading: Icon(Icons.search),
+                    title: Text(
+                      "Type Location",
+                      style: GoogleFonts.poppins(fontSize: 14.sp),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showLocationInputDialog(context);
+                    },
+                  ),
+                  SizedBox(height: 50.h),
+                ],
               ),
-              SizedBox(height: 20.h),
-              ListTile(
-                leading: Icon(Icons.gps_fixed),
-                title: Text(
-                  "Use Current GPS Location",
-                  style: GoogleFonts.poppins(fontSize: 14.sp),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _requestLocationPermission();
-                },
-              ),
-              ListTile(
-                leading: Icon(Icons.search),
-                title: Text(
-                  "Type Location",
-                  style: GoogleFonts.poppins(fontSize: 14.sp),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showLocationInputDialog(context);
-                },
-              ),
-              SizedBox(height: 50.h),
-            ],
-          ),
+            );
+          },
         );
       },
     );
