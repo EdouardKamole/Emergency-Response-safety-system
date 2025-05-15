@@ -1,3 +1,4 @@
+import 'package:emergency_app/screens/rescue_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:emergency_app/screens/dashboard_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,11 +16,7 @@ String currentLocation = "Fetching location...";
 class _HomeScreenState extends State<HomeScreen> {
   int selectedIndex = 0;
 
-  List<Widget> widgetOptions = [
-    DashboardScreen(),
-    Text('SOS Page Content'),
-    Text('Community Page Content'),
-  ];
+  List<Widget> widgetOptions = [DashboardScreen(), RescueScreen()];
 
   void onItemTapped(int index) {
     setState(() {

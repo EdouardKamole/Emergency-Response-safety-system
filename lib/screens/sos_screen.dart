@@ -438,51 +438,65 @@ class _SosScreenState extends State<SosScreen> {
       isScrollControlled: true,
       context: context,
       builder: (BuildContext context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.3, // Initial height of the sheet
-          minChildSize: 0.2, // Minimum height of the sheet
-          maxChildSize: 0.8, // Maximum height of the sheet
-          builder: (BuildContext context, ScrollController scrollController) {
-            return Container(
-              padding: EdgeInsets.all(20.w),
-              child: ListView(
-                controller: scrollController,
-                children: [
-                  Text(
-                    "Select Location",
+        return Container(
+          padding: EdgeInsets.all(20.w),
+          constraints: BoxConstraints(
+            maxHeight:
+                MediaQuery.of(context).size.height *
+                0.6, // Set a maximum height
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  "Select Location",
+                  style: GoogleFonts.poppins(
+                    fontSize: 18.sp, // Increased font size
+                    fontWeight: FontWeight.w600, // Added font weight
+                    color: Colors.black87, // Added color
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                ListTile(
+                  leading: Icon(
+                    Icons.gps_fixed,
+                    color: Colors.red,
+                  ), // Added color to icon
+                  title: Text(
+                    "Use Current GPS Location",
                     style: GoogleFonts.poppins(
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.w600,
-                    ),
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                    ), // Styled text
                   ),
-                  SizedBox(height: 20.h),
-                  ListTile(
-                    leading: Icon(Icons.gps_fixed),
-                    title: Text(
-                      "Use Current GPS Location",
-                      style: GoogleFonts.poppins(fontSize: 14.sp),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _requestLocationPermission();
-                    },
+                  onTap: () {
+                    Navigator.pop(context);
+                    _requestLocationPermission();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(
+                    Icons.search,
+                    color: Colors.red,
+                  ), // Added color to icon
+                  title: Text(
+                    "Type Location",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                    ), // Styled text
                   ),
-                  ListTile(
-                    leading: Icon(Icons.search),
-                    title: Text(
-                      "Type Location",
-                      style: GoogleFonts.poppins(fontSize: 14.sp),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showLocationInputDialog(context);
-                    },
-                  ),
-                  SizedBox(height: 50.h),
-                ],
-              ),
-            );
-          },
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showLocationInputDialog(context);
+                  },
+                ),
+                SizedBox(height: 50.h),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -490,37 +504,87 @@ class _SosScreenState extends State<SosScreen> {
 
   void _showLocationInputDialog(BuildContext context) {
     String typedLocation = "";
-    showDialog(
+    showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(
-            "Enter Location",
-            style: GoogleFonts.poppins(fontSize: 16.sp),
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
           ),
-          content: TextField(
-            onChanged: (value) {
-              typedLocation = value;
-            },
-            decoration: InputDecoration(hintText: "Type location here"),
+          child: Container(
+            padding: EdgeInsets.all(20.w),
+            constraints: BoxConstraints(
+              maxHeight:
+                  MediaQuery.of(context).size.height *
+                  0.6, // Set a maximum height
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    "Enter Location",
+                    style: GoogleFonts.poppins(
+                      fontSize: 18.sp, // Increased font size
+                      fontWeight: FontWeight.w600, // Added font weight
+                      color: Colors.black87, // Added color
+                    ),
+                  ),
+                  SizedBox(height: 10.h),
+                  TextField(
+                    onChanged: (value) {
+                      typedLocation = value;
+                    },
+                    decoration: InputDecoration(
+                      hintText: "Type location here",
+                      hintStyle: GoogleFonts.poppins(
+                        fontSize: 14.sp,
+                        color: Colors.grey,
+                      ), // Styled hint text
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.r),
+                      ), // Added border
+                    ),
+                  ),
+                  SizedBox(height: 20.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        child: Text(
+                          "Cancel",
+                          style: GoogleFonts.poppins(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w500,
+                          ), // Styled button text
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                      ),
+                      TextButton(
+                        child: Text(
+                          "OK",
+                          style: GoogleFonts.poppins(
+                            fontSize: 14.sp,
+                            fontWeight: FontWeight.w500,
+                          ), // Styled button text
+                        ),
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                          setState(() {
+                            currentLocation = typedLocation;
+                          });
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
-          actions: [
-            TextButton(
-              child: Text("Cancel"),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              child: Text("OK"),
-              onPressed: () {
-                Navigator.of(context).pop();
-                setState(() {
-                  currentLocation = typedLocation;
-                });
-              },
-            ),
-          ],
         );
       },
     );

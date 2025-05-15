@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "770803828821",
+    "project_id": "sos-app-54503",
+    "storage_bucket": "sos-app-54503.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:770803828821:android:cd73d3fe60986920ceacdc",
+        "android_client_info": {
+          "package_name": "com.example.emergency_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyByIewLfpQ_qXRRpePTygx4S2tDHW2G1cg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
