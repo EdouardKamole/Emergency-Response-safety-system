@@ -16,6 +16,7 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   String currentLocation = "Fetching location...";
 
+  @override
   void initState() {
     super.initState();
     _requestLocationPermission(); // Request permission on init
@@ -54,19 +55,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       if (placemarks != null && placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
-        setState(() {
-          currentLocation =
-              "${place.name}, ${place.locality}, ${place.administrativeArea}, ${place.country}";
-        });
+        if (mounted) {
+          // Check if the widget is still in the tree
+          setState(() {
+            currentLocation =
+                "${place.name}, ${place.locality}, ${place.administrativeArea}, ${place.country}";
+          });
+        }
       } else {
-        setState(() {
-          currentLocation = "No address found for these coordinates";
-        });
+        if (mounted) {
+          // Check if the widget is still in the tree
+          setState(() {
+            currentLocation = "No address found for these coordinates";
+          });
+        }
       }
     } catch (e) {
-      setState(() {
-        currentLocation = "Error fetching location: ${e.toString()}";
-      });
+      if (mounted) {
+        // Check if the widget is still in the tree
+        setState(() {
+          currentLocation = "Error fetching location: ${e.toString()}";
+        });
+      }
     }
   }
 
@@ -95,8 +105,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                             SizedBox(width: 5.w),
                             Expanded(
                               child: Text(
-                                currentLocation.length > 30
-                                    ? '${currentLocation.substring(0, 30)}...'
+                                currentLocation.length > 25
+                                    ? '${currentLocation.substring(0, 25)}...'
                                     : currentLocation,
                                 style: GoogleFonts.poppins(
                                   fontSize: 16.sp,
