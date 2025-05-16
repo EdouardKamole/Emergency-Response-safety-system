@@ -116,7 +116,21 @@ class _SosScreenState extends State<SosScreen> {
     bool hasMedia = _image != null || _video != null;
 
     return Scaffold(
-      appBar: AppBar(titleSpacing: 0, leadingWidth: 40.w),
+      appBar: AppBar(
+        // titleSpacing: 0,
+        // leadingWidth: 40.w,
+        automaticallyImplyLeading: false,
+        centerTitle: true,
+        title: Text(
+          "Report Emergency",
+          style: GoogleFonts.poppins(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.w600,
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: Colors.red.shade500,
+      ),
       body: SafeArea(
         child: Container(
           margin: EdgeInsets.symmetric(horizontal: 20),
@@ -124,18 +138,16 @@ class _SosScreenState extends State<SosScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Align(
-                  alignment: Alignment.center,
-                  child: Text(
-                    "Select Emergency",
-                    style: GoogleFonts.poppins(
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
+                SizedBox(height: 14.h),
+                Text(
+                  "Select Emergency",
+                  style: GoogleFonts.poppins(
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
                   ),
                 ),
-                SizedBox(height: 30.h),
+                SizedBox(height: 18.h),
                 GridView.builder(
                   shrinkWrap: true,
                   physics: NeverScrollableScrollPhysics(),
@@ -227,7 +239,6 @@ class _SosScreenState extends State<SosScreen> {
                 ),
                 SizedBox(height: 15.h),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
                       "Upload media",
@@ -237,10 +248,11 @@ class _SosScreenState extends State<SosScreen> {
                         color: Colors.black87,
                       ),
                     ),
+                    SizedBox(width: 4.w),
                     Text(
                       "(optional)",
                       style: GoogleFonts.poppins(
-                        fontSize: 13.sp,
+                        fontSize: 12.sp,
                         fontWeight: FontWeight.w500,
                         color: Colors.black45,
                       ),
@@ -405,7 +417,14 @@ class _SosScreenState extends State<SosScreen> {
                             children: <Widget>[
                               ListTile(
                                 leading: new Icon(Icons.image),
-                                title: new Text('Pick Image'),
+                                title: new Text(
+                                  'Pick Image',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black87,
+                                  ),
+                                ),
                                 onTap: () {
                                   Navigator.pop(context);
                                   _pickImage();
@@ -413,7 +432,14 @@ class _SosScreenState extends State<SosScreen> {
                               ),
                               ListTile(
                                 leading: new Icon(Icons.videocam),
-                                title: new Text('Pick Video'),
+                                title: new Text(
+                                  'Pick Video',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black87,
+                                  ),
+                                ),
                                 onTap: () {
                                   Navigator.pop(context);
                                   _pickVideo();
@@ -438,51 +464,60 @@ class _SosScreenState extends State<SosScreen> {
       isScrollControlled: true,
       context: context,
       builder: (BuildContext context) {
-        return DraggableScrollableSheet(
-          initialChildSize: 0.3, // Initial height of the sheet
-          minChildSize: 0.2, // Minimum height of the sheet
-          maxChildSize: 0.8, // Maximum height of the sheet
-          builder: (BuildContext context, ScrollController scrollController) {
-            return Container(
-              padding: EdgeInsets.all(20.w),
-              child: ListView(
-                controller: scrollController,
-                children: [
-                  Text(
-                    "Select Location",
+        return SizedBox(
+          height: MediaQuery.of(context).size.height * 0.6,
+          child: Container(
+            height:
+                MediaQuery.of(context).size.height * 0.6, // Set a fixed height
+            padding: EdgeInsets.all(20.w),
+            child: ListView(
+              children: [
+                Text(
+                  "Select Location",
+                  style: GoogleFonts.poppins(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87, // Added color
+                  ),
+                ),
+                SizedBox(height: 20.h),
+                ListTile(
+                  leading: Icon(
+                    Icons.gps_fixed,
+                    color: Colors.red,
+                  ), // Added color
+                  title: Text(
+                    "Use Current GPS Location",
                     style: GoogleFonts.poppins(
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 16.sp, // Increased font size
+                      fontWeight: FontWeight.w500, // Added font weight
+                      color: Colors.black87, // Added color
                     ),
                   ),
-                  SizedBox(height: 20.h),
-                  ListTile(
-                    leading: Icon(Icons.gps_fixed),
-                    title: Text(
-                      "Use Current GPS Location",
-                      style: GoogleFonts.poppins(fontSize: 14.sp),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _requestLocationPermission();
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.search, color: Colors.red), // Added color
+                  title: Text(
+                    "Type Location",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16.sp, // Increased font size
+                      fontWeight: FontWeight.w500, // Added font weight
+                      color: Colors.black87, // Added color
                     ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _requestLocationPermission();
-                    },
                   ),
-                  ListTile(
-                    leading: Icon(Icons.search),
-                    title: Text(
-                      "Type Location",
-                      style: GoogleFonts.poppins(fontSize: 14.sp),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showLocationInputDialog(context);
-                    },
-                  ),
-                  SizedBox(height: 50.h),
-                ],
-              ),
-            );
-          },
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showLocationInputDialog(context);
+                  },
+                ),
+                SizedBox(height: 50.h),
+              ],
+            ),
+          ),
         );
       },
     );
@@ -496,23 +531,47 @@ class _SosScreenState extends State<SosScreen> {
         return AlertDialog(
           title: Text(
             "Enter Location",
-            style: GoogleFonts.poppins(fontSize: 16.sp),
+            style: GoogleFonts.poppins(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
           ),
           content: TextField(
             onChanged: (value) {
               typedLocation = value;
             },
-            decoration: InputDecoration(hintText: "Type location here"),
+            decoration: InputDecoration(
+              hintText: "Type location here",
+              hintStyle: GoogleFonts.poppins(
+                fontSize: 14.sp,
+                color: Colors.grey,
+              ),
+            ),
           ),
           actions: [
             TextButton(
-              child: Text("Cancel"),
+              child: Text(
+                "Cancel",
+                style: GoogleFonts.poppins(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black87,
+                ),
+              ),
               onPressed: () {
                 Navigator.of(context).pop();
               },
             ),
             TextButton(
-              child: Text("OK"),
+              child: Text(
+                "OK",
+                style: GoogleFonts.poppins(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.black87,
+                ),
+              ),
               onPressed: () {
                 Navigator.of(context).pop();
                 setState(() {
