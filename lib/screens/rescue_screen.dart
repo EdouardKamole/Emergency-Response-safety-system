@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:permission_handler/permission_handler.dart'; // Import permission_handler
 
 class RescueScreen extends StatefulWidget {
   const RescueScreen({Key? key}) : super(key: key);
@@ -25,17 +26,44 @@ class _RescueScreenState extends State<RescueScreen> {
   Set<Marker> _markers = {};
   Set<Polyline> _polylines = {};
   DatabaseReference? _locationRef;
+  bool _firebaseInitialized = false; // Track Firebase initialization
 
   @override
   void initState() {
     super.initState();
     _initializeFirebase();
-    _getCurrentLocation();
+    _requestLocationPermission(); // Request location permission
   }
 
   Future<void> _initializeFirebase() async {
-    await Firebase.initializeApp();
-    _locationRef = FirebaseDatabase.instance.ref().child('rescue_location');
+    try {
+      await Firebase.initializeApp();
+      _locationRef = FirebaseDatabase.instance.ref().child('rescue_location');
+      setState(() {
+        _firebaseInitialized = true;
+      });
+    } catch (e) {
+      print("Error initializing Firebase: $e");
+      // Handle Firebase initialization error (e.g., show an error message)
+    }
+  }
+
+  Future<void> _requestLocationPermission() async {
+    var status = await Permission.location.status;
+    if (status.isDenied) {
+      if (await Permission.location.request().isGranted) {
+        _getCurrentLocation();
+      } else {
+        print('Location permission denied');
+        // Handle permission denial appropriately
+      }
+    } else if (status.isGranted) {
+      _getCurrentLocation();
+    } else if (status.isPermanentlyDenied) {
+      print('Location permission permanently denied');
+      openAppSettings();
+      // Handle permanently denied permission appropriately
+    }
   }
 
   Future<void> _getCurrentLocation() async {
@@ -50,15 +78,21 @@ class _RescueScreenState extends State<RescueScreen> {
       });
     } catch (e) {
       print("Error getting location: $e");
+      // Handle location error (e.g., show an error message)
     }
   }
 
   Future<void> _updateVictimLocation() async {
     if (_currentLocation != null && _locationRef != null) {
-      await _locationRef!.child('victim').set({
-        'latitude': _currentLocation!.latitude,
-        'longitude': _currentLocation!.longitude,
-      });
+      try {
+        await _locationRef!.child('victim').set({
+          'latitude': _currentLocation!.latitude,
+          'longitude': _currentLocation!.longitude,
+        });
+      } catch (e) {
+        print("Error updating victim location: $e");
+        // Handle Firebase update error
+      }
     }
   }
 
@@ -131,7 +165,9 @@ class _RescueScreenState extends State<RescueScreen> {
     return Scaffold(
       appBar: AppBar(title: Text("Rescue Screen")),
       body:
-          _currentLocation == null
+          !_firebaseInitialized
+              ? Center(child: Text("Initializing Firebase..."))
+              : _currentLocation == null
               ? Center(child: CircularProgressIndicator())
               : Column(
                 children: [
@@ -153,7 +189,7 @@ class _RescueScreenState extends State<RescueScreen> {
                     child: GoogleMap(
                       mapType: MapType.hybrid,
                       initialCameraPosition: CameraPosition(
-                        target: _currentLocation!,
+                        target: _currentLocation ?? _center,
                         zoom: 12.0,
                       ),
                       onMapCreated: (GoogleMapController controller) {
