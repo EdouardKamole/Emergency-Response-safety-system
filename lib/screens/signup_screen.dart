@@ -4,9 +4,79 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:emergency_app/components/input_field.dart';
 import 'package:emergency_app/screens/login_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class SignupScreen extends StatelessWidget {
-  const SignupScreen({super.key});
+class SignupScreen extends StatefulWidget {
+  const SignupScreen({Key? key}) : super(key: key);
+
+  @override
+  State<SignupScreen> createState() => _SignupScreenState();
+}
+
+class _SignupScreenState extends State<SignupScreen> {
+  final _auth = FirebaseAuth.instance;
+  final _formKey = GlobalKey<FormState>();
+  final _fullNameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _isLoading = false;
+  String? _errorMessage;
+
+  @override
+  void dispose() {
+    _fullNameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _signUp() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+
+      try {
+        UserCredential userCredential = await _auth
+            .createUserWithEmailAndPassword(
+              email: _emailController.text.trim(),
+              password: _passwordController.text.trim(),
+            );
+
+        // After successful signup, you can save additional user details to Firestore
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(userCredential.user?.uid)
+            .set({
+              'fullName': _fullNameController.text.trim(),
+              'email': _emailController.text.trim(),
+              // Add other fields as necessary
+            });
+
+        print("Signup successful!");
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => LoginScreen()),
+        );
+      } on FirebaseAuthException catch (e) {
+        print("Firebase Auth Error: ${e.code} - ${e.message}");
+        setState(() {
+          _errorMessage = e.message;
+        });
+      } catch (e) {
+        print("Error during signup: $e");
+        setState(() {
+          _errorMessage = "An unexpected error occurred.";
+        });
+      } finally {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -19,122 +89,213 @@ class SignupScreen extends StatelessWidget {
           ),
           child: Container(
             margin: EdgeInsets.symmetric(horizontal: 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(height: 50.h),
-                Text(
-                  "Let's sign you up",
-                  style: GoogleFonts.poppins(
-                    color: Colors.red,
-                    fontSize: 34.sp,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                SizedBox(height: 15.h),
-                Text(
-                  "Welcome",
-                  textAlign: TextAlign.left,
-                  style: GoogleFonts.poppins(
-                    fontSize: 13.sp,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                SizedBox(height: 20.h),
-                InputField(label: "Full Name", hintText: "your name"),
-                SizedBox(height: 20.h),
-                InputField(label: "Email", hintText: "Your email"),
-                SizedBox(height: 20.h),
-                InputField(label: "Password", hintText: "password"),
-                SizedBox(height: 30.h),
-                SizedBox(
-                  width: double.infinity,
-                  child: MaterialButton(
-                    onPressed: () {},
-                    color: Colors.red,
-                    padding: EdgeInsets.symmetric(
-                      vertical: 14.h,
-                      horizontal: 14.w,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                        10.r,
-                      ), // Adjust the radius as needed
-                    ),
-                    child: Text(
-                      "Sign up",
-                      style: GoogleFonts.poppins(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 13.5.sp,
-                      ),
-                    ),
-                  ),
-                ),
-                SizedBox(height: 20.h),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Already a member?",
-                      style: GoogleFonts.poppins(fontSize: 13.sp),
-                    ),
-                    SizedBox(width: 3.w),
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => LoginScreen(),
-                          ),
-                        );
-                      },
-                      child: Text(
-                        "Login",
-                        style: GoogleFonts.poppins(
-                          fontSize: 13.sp,
-                          color: Colors.red,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 30.h),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    icon: FaIcon(
-                      FontAwesomeIcons.google,
+            child: Form(
+              key: _formKey, // Add the form key
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(height: 50.h),
+                  Text(
+                    "Let's sign you up",
+                    style: GoogleFonts.poppins(
                       color: Colors.red,
-                      size: 20.sp,
+                      fontSize: 34.sp,
+                      fontWeight: FontWeight.w800,
                     ),
-                    onPressed: () {
-                      // TODO: Implement Google Sign-In logic here
-                      print("Sign up with Google pressed");
+                  ),
+                  SizedBox(height: 12.h),
+                  Text(
+                    "Welcome",
+                    textAlign: TextAlign.left,
+                    style: GoogleFonts.poppins(
+                      fontSize: 17.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  SizedBox(height: 20.h),
+                  InputField(
+                    label: "Full Name",
+                    hintText: "your name",
+                    hideText: false,
+                    fieldIcon: Icon(Icons.person),
+                    controller: _fullNameController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Please enter your full name";
+                      }
+                      return null;
                     },
-                    style: OutlinedButton.styleFrom(
-                      side: BorderSide(color: Colors.red),
-                      padding: EdgeInsets.symmetric(vertical: 12.h),
+                  ),
+                  SizedBox(height: 20.h),
+                  InputField(
+                    label: "Email",
+                    hintText: "Your email",
+                    hideText: false,
+                    fieldIcon: Icon(Icons.email),
+                    controller: _emailController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Please enter your email";
+                      }
+                      if (!value.contains('@')) {
+                        return "Please enter a valid email";
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 20.h),
+                  InputField(
+                    label: "Password",
+                    hintText: "password",
+                    hideText: true,
+                    fieldIcon: Icon(Icons.remove_red_eye),
+                    controller: _passwordController,
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return "Please enter your password";
+                      }
+                      if (value.length < 6) {
+                        return "Password must be at least 6 characters";
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 10.h),
+                  if (_errorMessage != null) // Display error message
+                    Padding(
+                      padding: EdgeInsets.only(bottom: 10.h),
+                      child: Text(
+                        _errorMessage!,
+                        style: TextStyle(color: Colors.red, fontSize: 14.sp),
+                      ),
+                    ),
+                  SizedBox(height: 20.h),
+                  SizedBox(
+                    width: double.infinity,
+                    child: MaterialButton(
+                      onPressed:
+                          _isLoading
+                              ? null
+                              : _signUp, // Disable button while loading
+                      color: Colors.red,
+                      padding: EdgeInsets.symmetric(
+                        vertical: 14.h,
+                        horizontal: 14.w,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10.r),
                       ),
+                      child:
+                          _isLoading
+                              ? CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.red,
+                                ),
+                              )
+                              : Text(
+                                "Sign up",
+                                style: GoogleFonts.poppins(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13.5.sp,
+                                ),
+                              ),
                     ),
-                    label: Text(
-                      "Sign up with Google",
-                      style: GoogleFonts.poppins(
+                  ),
+                  SizedBox(height: 20.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Already a member?",
+                        style: GoogleFonts.poppins(fontSize: 13.sp),
+                      ),
+                      SizedBox(width: 3.w),
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => LoginScreen(),
+                            ),
+                          );
+                        },
+                        child: Text(
+                          "Login",
+                          style: GoogleFonts.poppins(
+                            fontSize: 13.sp,
+                            color: Colors.red,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 30.h),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      icon: FaIcon(
+                        FontAwesomeIcons.google,
                         color: Colors.red,
-                        fontWeight: FontWeight.w500,
-                        fontSize: 13.5.sp,
+                        size: 20.sp,
+                      ),
+                      onPressed: () {
+                        // TODO: Implement Google Sign-In logic here
+                        print("Sign up with Google pressed");
+                      },
+                      style: OutlinedButton.styleFrom(
+                        side: BorderSide(color: Colors.red),
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10.r),
+                        ),
+                      ),
+                      label: Text(
+                        "Sign up with Google",
+                        style: GoogleFonts.poppins(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w500,
+                          fontSize: 13.5.sp,
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Emergency App',
+      theme: ThemeData(
+        primarySwatch: Colors.red,
+        visualDensity: VisualDensity.adaptivePlatformDensity,
+      ),
+      home: SignupScreen(),
+    );
+  }
+}
+
+class PigeonUserDetails {
+  final String fullName;
+  final String email;
+
+  PigeonUserDetails({required this.fullName, required this.email});
+
+  factory PigeonUserDetails.fromJson(Map<String, dynamic> json) {
+    return PigeonUserDetails(
+      fullName: json['fullName'] ?? '',
+      email: json['email'] ?? '',
     );
   }
 }

@@ -5,9 +5,20 @@ import 'package:google_fonts/google_fonts.dart';
 class InputField extends StatelessWidget {
   final String label;
   final String hintText;
+  final bool hideText;
+  final Widget fieldIcon;
+  final TextEditingController? controller; // Add controller
+  final String? Function(String?)? validator; // Add validator
 
-  const InputField({Key? key, required this.label, required this.hintText})
-    : super(key: key);
+  const InputField({
+    Key? key,
+    required this.label,
+    required this.hintText,
+    required this.hideText,
+    required this.fieldIcon,
+    this.controller,
+    this.validator,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -22,11 +33,18 @@ class InputField extends StatelessWidget {
           ),
         ),
         SizedBox(height: 8.h),
-        TextField(
+        TextFormField(
+          controller: controller,
+          obscureText: hideText,
           style: GoogleFonts.poppins(fontSize: 14.sp),
           decoration: InputDecoration(
+            prefixIcon: fieldIcon,
             hintText: hintText,
             isDense: true,
+            prefixIconConstraints: BoxConstraints(
+              minWidth: 35.w,
+              maxWidth: 35.w,
+            ),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10.r),
             ),
@@ -35,6 +53,7 @@ class InputField extends StatelessWidget {
               vertical: 12.h,
             ),
           ),
+          validator: validator, // Set the validator
         ),
       ],
     );

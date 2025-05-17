@@ -1,26 +1,36 @@
 {
   "project_info": {
-    "project_number": "770803828821",
-    "project_id": "sos-app-54503",
-    "storage_bucket": "sos-app-54503.firebasestorage.app"
+    "project_number": "597951186988",
+    "project_id": "emergency-response-syste-67f43",
+    "storage_bucket": "emergency-response-syste-67f43.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:770803828821:android:cd73d3fe60986920ceacdc",
+        "mobilesdk_app_id": "1:597951186988:android:7784f5f9f3bdd81051e989",
         "android_client_info": {
           "package_name": "com.example.emergency_app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "597951186988-uueeh6gpioo1a1cf32fck7ngsudhs1ib.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
-          "current_key": "AIzaSyByIewLfpQ_qXRRpePTygx4S2tDHW2G1cg"
+          "current_key": "AIzaSyAyLeQuNUV6IMukd5j1h7Cpt7x4W4cZPEo"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "597951186988-uueeh6gpioo1a1cf32fck7ngsudhs1ib.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

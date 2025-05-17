@@ -32,15 +32,29 @@ class LoginScreen extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-                SizedBox(height: 14.h),
+                SizedBox(height: 12.h),
                 Text(
                   "Welcome back",
-                  style: GoogleFonts.poppins(fontSize: 13.sp),
+                  style: GoogleFonts.poppins(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
                 ),
                 SizedBox(height: 20.h),
-                InputField(label: "Email", hintText: "Your email"),
+                InputField(
+                  label: "Email",
+                  hintText: "Your email",
+                  hideText: false,
+                  fieldIcon: Icon(Icons.email),
+                ),
                 SizedBox(height: 20.h),
-                InputField(label: "Password", hintText: "password"),
+                InputField(
+                  label: "Password",
+                  hintText: "password",
+                  hideText: true,
+                  fieldIcon: Icon(Icons.remove_red_eye),
+                ),
                 SizedBox(height: 10.h),
                 GestureDetector(
                   onTap: () {
