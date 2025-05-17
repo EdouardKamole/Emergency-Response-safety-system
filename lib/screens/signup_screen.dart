@@ -6,6 +6,7 @@ import 'package:emergency_app/components/input_field.dart';
 import 'package:emergency_app/screens/login_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart'; // Import google_sign_in
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({Key? key}) : super(key: key);
@@ -31,7 +32,7 @@ class _SignupScreenState extends State<SignupScreen> {
     super.dispose();
   }
 
-  Future<void> _signUp() async {
+  Future<void> _signUpWithEmailAndPassword() async {
     if (_formKey.currentState!.validate()) {
       setState(() {
         _isLoading = true;
@@ -56,6 +57,12 @@ class _SignupScreenState extends State<SignupScreen> {
             });
 
         print("Signup successful!");
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Signup successful!"),
+            backgroundColor: Colors.green,
+          ),
+        );
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => LoginScreen()),
@@ -75,6 +82,67 @@ class _SignupScreenState extends State<SignupScreen> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _signUpWithGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+      if (googleUser == null) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = "Google Sign-In cancelled.";
+        });
+        return;
+      }
+
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      final OAuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
+
+      // After successful signup, you can save additional user details to Firestore
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user?.uid)
+          .set({
+            'fullName': googleUser.displayName ?? "",
+            'email': googleUser.email,
+            // Add other fields as necessary
+          });
+
+      print("Signup with Google successful!");
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text("Signup with Google successful!"),
+          backgroundColor: Colors.green,
+        ),
+      );
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => LoginScreen()),
+      );
+    } catch (e) {
+      print("Error during Google Sign-In: $e");
+      setState(() {
+        _errorMessage = "Failed to sign up with Google.";
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -162,7 +230,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     },
                   ),
                   SizedBox(height: 10.h),
-                  if (_errorMessage != null) // Display error message
+                  if (_errorMessage != null)
                     Padding(
                       padding: EdgeInsets.only(bottom: 10.h),
                       child: Text(
@@ -175,9 +243,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     width: double.infinity,
                     child: MaterialButton(
                       onPressed:
-                          _isLoading
-                              ? null
-                              : _signUp, // Disable button while loading
+                          _isLoading ? null : _signUpWithEmailAndPassword,
                       color: Colors.red,
                       padding: EdgeInsets.symmetric(
                         vertical: 14.h,
@@ -190,7 +256,7 @@ class _SignupScreenState extends State<SignupScreen> {
                           _isLoading
                               ? CircularProgressIndicator(
                                 valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.red,
+                                  Colors.white,
                                 ),
                               )
                               : Text(
@@ -236,15 +302,15 @@ class _SignupScreenState extends State<SignupScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
-                      icon: FaIcon(
-                        FontAwesomeIcons.google,
-                        color: Colors.red,
-                        size: 20.sp,
-                      ),
-                      onPressed: () {
-                        // TODO: Implement Google Sign-In logic here
-                        print("Sign up with Google pressed");
-                      },
+                      icon:
+                          _isLoading
+                              ? null
+                              : FaIcon(
+                                FontAwesomeIcons.google,
+                                color: Colors.red,
+                                size: 20.sp,
+                              ),
+                      onPressed: _isLoading ? null : _signUpWithGoogle,
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: Colors.red),
                         padding: EdgeInsets.symmetric(vertical: 12.h),
@@ -252,14 +318,27 @@ class _SignupScreenState extends State<SignupScreen> {
                           borderRadius: BorderRadius.circular(10.r),
                         ),
                       ),
-                      label: Text(
-                        "Sign up with Google",
-                        style: GoogleFonts.poppins(
-                          color: Colors.red,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 13.5.sp,
-                        ),
-                      ),
+                      label:
+                          _isLoading
+                              ? SizedBox(
+                                // Show CircularProgressIndicator when loading
+                                width: 24.w,
+                                height: 24.h,
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.red,
+                                  ),
+                                ),
+                              )
+                              : Text(
+                                // Show button text when not loading
+                                "Sign up with Google",
+                                style: GoogleFonts.poppins(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.w500,
+                                  fontSize: 13.5.sp,
+                                ),
+                              ),
                     ),
                   ),
                 ],
@@ -282,20 +361,6 @@ class MyApp extends StatelessWidget {
         visualDensity: VisualDensity.adaptivePlatformDensity,
       ),
       home: SignupScreen(),
-    );
-  }
-}
-
-class PigeonUserDetails {
-  final String fullName;
-  final String email;
-
-  PigeonUserDetails({required this.fullName, required this.email});
-
-  factory PigeonUserDetails.fromJson(Map<String, dynamic> json) {
-    return PigeonUserDetails(
-      fullName: json['fullName'] ?? '',
-      email: json['email'] ?? '',
     );
   }
 }
