@@ -8,33 +8,57 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
 
 class SosScreen extends StatefulWidget {
-  const SosScreen({Key? key}) : super(key: key);
+  final int? selectedIndex;
+
+  const SosScreen({Key? key, this.selectedIndex}) : super(key: key);
 
   @override
   _SosScreenState createState() => _SosScreenState();
 }
 
-class _SosScreenState extends State<SosScreen> {
+class _SosScreenState extends State<SosScreen>
+    with SingleTickerProviderStateMixin {
   int selectedIndex = -1;
   String currentLocation = "Fetching Location...";
+  String notes = "";
   List<Map<String, dynamic>> gridItems = [
-    {'icon': Icons.medical_services, 'label': 'Medical'},
-    {'icon': Icons.local_police, 'label': 'Police'},
-    {'icon': Icons.fire_truck, 'label': 'Fire'},
-    {'icon': Icons.car_crash, 'label': 'Accident'},
-    {'icon': Icons.warning, 'label': 'Hazard'},
-    {'icon': Icons.other_houses, 'label': 'Other'},
+    {
+      'icon': Icons.medical_services,
+      'label': 'Medical',
+    }, // Index 0 (Health Care)
+    {'icon': Icons.local_police, 'label': 'Police'}, // Index 1 (Police)
+    {'icon': Icons.fire_truck, 'label': 'Fire'}, // Index 2 (Fire & Safety)
+    {'icon': Icons.car_crash, 'label': 'Accident'}, // Index 3 (Accident)
+    {'icon': Icons.warning, 'label': 'Hazard'}, // Index 4
+    {'icon': Icons.other_houses, 'label': 'Other'}, // Index 5
+    {'icon': Icons.sos, 'label': 'SOS'}, // Index 6 (SOS)
   ];
 
-  File? _image;
-  File? _video;
-  String? _videoThumbnailPath;
-  File? _audio;
+  List<Map<String, dynamic>> mediaItems = [];
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
 
   @override
   void initState() {
     super.initState();
+    if (widget.selectedIndex != null) {
+      selectedIndex = widget.selectedIndex!;
+    }
     _requestLocationPermission();
+
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 150),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: 0.95).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _requestLocationPermission() async {
@@ -43,12 +67,20 @@ class _SosScreenState extends State<SosScreen> {
       if (await Permission.location.request().isGranted) {
         _getCurrentLocation();
       } else {
-        print('Location permission denied');
+        if (mounted) {
+          setState(() {
+            currentLocation = "Location permission denied";
+          });
+        }
       }
     } else if (status.isGranted) {
       _getCurrentLocation();
     } else if (status.isPermanentlyDenied) {
-      print('Location permission permanently denied');
+      if (mounted) {
+        setState(() {
+          currentLocation = "Location permission permanently denied";
+        });
+      }
       openAppSettings();
     }
   }
@@ -63,163 +95,202 @@ class _SosScreenState extends State<SosScreen> {
         position.longitude,
       );
 
-      if (placemarks != null && placemarks.isNotEmpty) {
+      if (placemarks.isNotEmpty) {
         Placemark place = placemarks[0];
-        setState(() {
-          currentLocation =
-              "${place.name}, ${place.locality}, ${place.administrativeArea}, ${place.country}";
-        });
+        if (mounted) {
+          setState(() {
+            currentLocation =
+                "${place.name}, ${place.locality}, ${place.administrativeArea}, ${place.country}";
+          });
+        }
       } else {
-        setState(() {
-          currentLocation = "No address found for these coordinates";
-        });
+        if (mounted) {
+          setState(() {
+            currentLocation = "No address found for these coordinates";
+          });
+        }
       }
     } catch (e) {
-      setState(() {
-        currentLocation = "Error fetching location: ${e.toString()}";
-      });
+      if (mounted) {
+        setState(() {
+          currentLocation = "Error fetching location: ${e.toString()}";
+        });
+      }
     }
   }
 
-  Future<void> _pickImage() async {
-    final ImagePicker _picker = ImagePicker();
-    final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      setState(() {
-        _image = File(image.path);
-        _video = null; // Clear video if image is selected
-      });
+  Future<void> _pickMedia(ImageSource source, {bool isVideo = false}) async {
+    final ImagePicker picker = ImagePicker();
+
+    // Request permissions based on the source
+    if (source == ImageSource.camera) {
+      var cameraStatus = await Permission.camera.status;
+      if (!cameraStatus.isGranted) {
+        cameraStatus = await Permission.camera.request();
+        if (!cameraStatus.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Camera permission denied")),
+            );
+          }
+          return;
+        }
+      }
+    } else {
+      var storageStatus = await Permission.storage.status;
+      if (!storageStatus.isGranted) {
+        storageStatus = await Permission.storage.request();
+        if (!storageStatus.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text("Storage permission denied")),
+            );
+          }
+          return;
+        }
+      }
+    }
+
+    try {
+      if (source == ImageSource.camera) {
+        if (isVideo) {
+          final XFile? video = await picker.pickVideo(source: source);
+          if (video != null && mounted) {
+            setState(() {
+              mediaItems.add({'file': File(video.path), 'isVideo': true});
+            });
+          }
+        } else {
+          final XFile? image = await picker.pickImage(source: source);
+          if (image != null && mounted) {
+            setState(() {
+              mediaItems.add({'file': File(image.path), 'isVideo': false});
+            });
+          }
+        }
+      } else {
+        // Check if pickMultipleMedia is supported (fallback if not)
+        try {
+          final List<XFile> media = await picker.pickMultipleMedia();
+          if (media.isNotEmpty && mounted) {
+            setState(() {
+              for (var item in media) {
+                mediaItems.add({
+                  'file': File(item.path),
+                  'isVideo': item.mimeType?.contains('video') ?? false,
+                });
+              }
+            });
+          }
+        } catch (e) {
+          // Fallback to pickImage if pickMultipleMedia fails
+          final XFile? image = await picker.pickImage(source: source);
+          if (image != null && mounted) {
+            setState(() {
+              mediaItems.add({'file': File(image.path), 'isVideo': false});
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error picking media: ${e.toString()}")),
+        );
+      }
     }
   }
 
-  Future<void> _pickVideo() async {
-    final ImagePicker _picker = ImagePicker();
-    final XFile? video = await _picker.pickVideo(source: ImageSource.gallery);
-    if (video != null) {
+  void _removeMedia(int index) {
+    if (mounted) {
       setState(() {
-        _video = File(video.path);
-        _image = null; // Clear image if video is selected
+        mediaItems.removeAt(index);
       });
     }
-  }
-
-  void _clearMedia() {
-    setState(() {
-      _image = null;
-      _video = null;
-      _videoThumbnailPath = null;
-    });
   }
 
   @override
   Widget build(BuildContext context) {
-    bool hasMedia = _image != null || _video != null;
+    String selectedCategory =
+        selectedIndex >= 0 && selectedIndex < gridItems.length
+            ? gridItems[selectedIndex]['label']
+            : "Not Selected";
 
     return Scaffold(
       appBar: AppBar(
-        // titleSpacing: 0,
-        // leadingWidth: 40.w,
         automaticallyImplyLeading: false,
         centerTitle: true,
         title: Text(
           "Report Emergency",
           style: GoogleFonts.poppins(
-            fontSize: 16.sp,
-            fontWeight: FontWeight.w600,
+            fontSize: 20.sp,
+            fontWeight: FontWeight.w700,
             color: Colors.white,
           ),
         ),
         backgroundColor: Colors.red.shade500,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.white, size: 24.sp),
+          onPressed: () => Navigator.pop(context),
+        ),
+        elevation: 4,
       ),
       body: SafeArea(
         child: Container(
-          margin: EdgeInsets.symmetric(horizontal: 20),
+          margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
           child: SingleChildScrollView(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: 14.h),
+                // Selected Emergency Display
                 Text(
-                  "Select Emergency",
+                  "Emergency Type",
                   style: GoogleFonts.poppins(
-                    fontSize: 14.sp,
+                    fontSize: 16.sp,
                     fontWeight: FontWeight.w600,
                     color: Colors.black87,
                   ),
                 ),
-                SizedBox(height: 18.h),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: NeverScrollableScrollPhysics(),
-                  itemCount: gridItems.length,
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 10.w,
-                    mainAxisSpacing: 8.h,
-                    childAspectRatio: 1.0,
+                SizedBox(height: 12.h),
+                Container(
+                  padding: EdgeInsets.all(12.w),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(color: Colors.red.shade200),
                   ),
-                  itemBuilder: (context, index) {
-                    return GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          selectedIndex = index;
-                        });
-                      },
-                      child: Card(
-                        elevation: 2,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10.r),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              gridItems[index]['icon'],
-                              size: 30.sp,
-                              color:
-                                  selectedIndex == index
-                                      ? Colors.red
-                                      : Colors.black87,
-                            ),
-                            SizedBox(height: 5.h),
-                            Text(
-                              gridItems[index]['label'],
-                              style: GoogleFonts.poppins(
-                                fontSize: 14.sp,
-                                fontWeight: FontWeight.w500,
-                                color:
-                                    selectedIndex == index
-                                        ? Colors.red
-                                        : Colors.black87,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+                  child: Row(
+                    children: [
+                      Icon(
+                        selectedIndex >= 0 && selectedIndex < gridItems.length
+                            ? gridItems[selectedIndex]['icon']
+                            : Icons.warning,
+                        size: 24.sp,
+                        color: Colors.red.shade500,
+                      ),
+                      SizedBox(width: 12.w),
+                      Text(
+                        selectedCategory,
+                        style: GoogleFonts.poppins(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.red.shade500,
                         ),
                       ),
-                    );
-                  },
-                ),
-                SizedBox(height: 30.h),
-                Text(
-                  "Location",
-                  style: GoogleFonts.poppins(
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+                    ],
                   ),
                 ),
+                SizedBox(height: 24.h),
+                // Location Section
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(Icons.location_pin, size: 20.sp, color: Colors.red),
-                    SizedBox(width: 3.w),
-                    Expanded(
-                      child: Text(
-                        currentLocation.length > 50
-                            ? '${currentLocation.substring(0, 50)}...'
-                            : currentLocation,
-                        style: GoogleFonts.poppins(fontSize: 15.sp),
-                        overflow: TextOverflow.ellipsis,
+                    Text(
+                      "Location",
+                      style: GoogleFonts.poppins(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
                       ),
                     ),
                     TextButton(
@@ -229,22 +300,53 @@ class _SosScreenState extends State<SosScreen> {
                       child: Text(
                         "Change",
                         style: GoogleFonts.poppins(
-                          fontSize: 15.sp,
-                          color: Colors.red,
+                          fontSize: 14.sp,
+                          color: Colors.red.shade500,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
                   ],
                 ),
-                SizedBox(height: 15.h),
+                Container(
+                  padding: EdgeInsets.all(12.w),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade100,
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.location_pin,
+                        size: 20.sp,
+                        color: Colors.red.shade500,
+                      ),
+                      SizedBox(width: 8.w),
+                      Expanded(
+                        child: Text(
+                          currentLocation.length > 50
+                              ? '${currentLocation.substring(0, 50)}...'
+                              : currentLocation,
+                          style: GoogleFonts.poppins(
+                            fontSize: 14.sp,
+                            color: Colors.black87,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: 24.h),
+                // Media Upload Section
                 Row(
                   children: [
                     Text(
-                      "Upload media",
+                      "Upload Media",
                       style: GoogleFonts.poppins(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w500,
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w600,
                         color: Colors.black87,
                       ),
                     ),
@@ -259,25 +361,91 @@ class _SosScreenState extends State<SosScreen> {
                     ),
                   ],
                 ),
-                SizedBox(height: 10.h),
+                SizedBox(height: 12.h),
                 _buildMediaSection(),
-                SizedBox(height: 20.h),
+                SizedBox(height: 24.h),
+                // Notes Section
+                Row(
+                  children: [
+                    Text(
+                      "Additional Notes",
+                      style: GoogleFonts.poppins(
+                        fontSize: 16.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    SizedBox(width: 4.w),
+                    Text(
+                      "(optional)",
+                      style: GoogleFonts.poppins(
+                        fontSize: 12.sp,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.black45,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 12.h),
+                TextField(
+                  onChanged: (value) {
+                    setState(() {
+                      notes = value;
+                    });
+                  },
+                  maxLines: 3,
+                  decoration: InputDecoration(
+                    hintText: "Enter any additional details here...",
+                    hintStyle: GoogleFonts.poppins(
+                      fontSize: 14.sp,
+                      color: Colors.grey.shade500,
+                    ),
+                    filled: true,
+                    fillColor: Colors.grey.shade100,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: BorderSide(color: Colors.grey.shade300),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                      borderSide: BorderSide(color: Colors.red.shade500),
+                    ),
+                  ),
+                  style: GoogleFonts.poppins(
+                    fontSize: 14.sp,
+                    color: Colors.black87,
+                  ),
+                ),
+                SizedBox(height: 32.h),
+                // Submit Button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {},
+                    onPressed:
+                        selectedIndex == -1
+                            ? null
+                            : () {
+                              print(
+                                "Submitting report with media: $mediaItems, notes: $notes",
+                              );
+                            },
                     style: ElevatedButton.styleFrom(
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(12.r),
                       ),
-                      backgroundColor: Colors.red,
+                      backgroundColor: Colors.red.shade500,
                       padding: EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 14,
+                        horizontal: 10.w,
+                        vertical: 16.h,
                       ),
+                      elevation: 4,
                     ),
                     child: Text(
-                      "Submit",
+                      "Submit Report",
                       style: GoogleFonts.poppins(
                         fontSize: 16.sp,
                         color: Colors.white,
@@ -294,168 +462,532 @@ class _SosScreenState extends State<SosScreen> {
     );
   }
 
-  Widget _buildMediaButton({
-    required IconData icon,
-    required String text,
-    required VoidCallback onPressed,
-  }) {
-    return Column(
-      children: [
-        IconButton(iconSize: 40.sp, icon: Icon(icon), onPressed: onPressed),
-        Text(text, style: GoogleFonts.poppins(fontSize: 12.sp)),
-      ],
-    );
-  }
-
-  Widget _buildThumbnail() {
-    if (_image != null) {
-      return Stack(
-        alignment: Alignment.topRight,
-        children: [
-          SizedBox(
-            height: 100.h,
-            width: 100.w,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.r),
-              child: Image.file(_image!, fit: BoxFit.cover),
+  void _showMediaOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+      ),
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext context) {
+        return Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.white, Colors.grey.shade50],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
             ),
-          ),
-          GestureDetector(
-            onTap: _clearMedia,
-            child: Container(
-              margin: EdgeInsets.all(5.0),
-              padding: EdgeInsets.all(2.0),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.7),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.close, size: 16.sp),
-            ),
-          ),
-        ],
-      );
-    } else if (_video != null) {
-      return Stack(
-        alignment: Alignment.topRight,
-        children: [
-          SizedBox(
-            height: 100.h,
-            width: 100.w,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8.r),
-              child: Container(
-                color: Colors.grey,
-                child: Center(
-                  child: Icon(Icons.videocam, size: 40.sp, color: Colors.white),
-                ),
-              ),
-            ),
-          ),
-          GestureDetector(
-            onTap: _clearMedia,
-            child: Container(
-              margin: EdgeInsets.all(5.0),
-              padding: EdgeInsets.all(2.0),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.7),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.close, size: 16.sp),
-            ),
-          ),
-        ],
-      );
-    } else {
-      return SizedBox.shrink();
-    }
-  }
-
-  Widget _buildMediaSection() {
-    bool hasMedia = _image != null || _video != null;
-
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.start,
-      children: [
-        _buildThumbnail(),
-        if (!hasMedia)
-          Row(
-            children: [
-              _buildMediaButton(
-                icon: Icons.image,
-                text: "Image",
-                onPressed: _pickImage,
-              ),
-              _buildMediaButton(
-                icon: Icons.videocam,
-                text: "Video",
-                onPressed: _pickVideo,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                spreadRadius: 2,
+                blurRadius: 10,
+                offset: const Offset(0, -2),
               ),
             ],
           ),
-        if (hasMedia)
-          Padding(
-            padding: EdgeInsets.only(left: 10.w),
-            child: _buildMediaButton(
-              icon: Icons.add_a_photo,
-              text: "Add",
-              onPressed: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  builder: (BuildContext context) {
-                    return DraggableScrollableSheet(
-                      initialChildSize: 0.3,
-                      minChildSize: 0.2,
-                      maxChildSize: 0.8,
-                      builder: (
-                        BuildContext context,
-                        ScrollController scrollController,
-                      ) {
-                        return SafeArea(
-                          child: ListView(
-                            controller: scrollController,
-                            children: <Widget>[
-                              ListTile(
-                                leading: new Icon(Icons.image),
-                                title: new Text(
-                                  'Pick Image',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 16.sp,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.black87,
-                                  ),
-                                ),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _pickImage();
-                                },
+          padding: EdgeInsets.symmetric(vertical: 16.h),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40.w,
+                height: 5.h,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+              ),
+              SizedBox(height: 20.h),
+              Text(
+                "Add Media",
+                style: GoogleFonts.poppins(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+              SizedBox(height: 16.h),
+              Container(
+                margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  leading: Container(
+                    padding: EdgeInsets.all(8.w),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.red.shade400, Colors.red.shade600],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.camera_alt,
+                      color: Colors.white,
+                      size: 24.sp,
+                    ),
+                  ),
+                  title: Text(
+                    "Take with Camera",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.vertical(
+                          top: Radius.circular(20.r),
+                        ),
+                      ),
+                      backgroundColor: Colors.transparent,
+                      builder: (BuildContext context) {
+                        return Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.white, Colors.grey.shade50],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ),
+                            borderRadius: BorderRadius.vertical(
+                              top: Radius.circular(20.r),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                spreadRadius: 2,
+                                blurRadius: 10,
+                                offset: const Offset(0, -2),
                               ),
-                              ListTile(
-                                leading: new Icon(Icons.videocam),
-                                title: new Text(
-                                  'Pick Video',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 16.sp,
-                                    fontWeight: FontWeight.w500,
-                                    color: Colors.black87,
-                                  ),
+                            ],
+                          ),
+                          padding: EdgeInsets.symmetric(vertical: 16.h),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 40.w,
+                                height: 5.h,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade300,
+                                  borderRadius: BorderRadius.circular(10.r),
                                 ),
-                                onTap: () {
-                                  Navigator.pop(context);
-                                  _pickVideo();
-                                },
                               ),
+                              SizedBox(height: 20.h),
+                              Container(
+                                margin: EdgeInsets.symmetric(
+                                  horizontal: 16.w,
+                                  vertical: 8.h,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12.r),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      spreadRadius: 1,
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: ListTile(
+                                  leading: Container(
+                                    padding: EdgeInsets.all(8.w),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.red.shade400,
+                                          Colors.red.shade600,
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.camera_alt,
+                                      color: Colors.white,
+                                      size: 24.sp,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    "Take Photo",
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16.sp,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    Navigator.pop(context);
+                                    _pickMedia(ImageSource.camera);
+                                  },
+                                ),
+                              ),
+                              Container(
+                                margin: EdgeInsets.symmetric(
+                                  horizontal: 16.w,
+                                  vertical: 8.h,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12.r),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      spreadRadius: 1,
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: ListTile(
+                                  leading: Container(
+                                    padding: EdgeInsets.all(8.w),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.red.shade400,
+                                          Colors.red.shade600,
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.videocam,
+                                      color: Colors.white,
+                                      size: 24.sp,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    "Record Video",
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16.sp,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                    Navigator.pop(context);
+                                    _pickMedia(
+                                      ImageSource.camera,
+                                      isVideo: true,
+                                    );
+                                  },
+                                ),
+                              ),
+                              Container(
+                                margin: EdgeInsets.symmetric(
+                                  horizontal: 16.w,
+                                  vertical: 8.h,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(12.r),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: Colors.grey.withOpacity(0.1),
+                                      spreadRadius: 1,
+                                      blurRadius: 4,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
+                                ),
+                                child: ListTile(
+                                  leading: Container(
+                                    padding: EdgeInsets.all(8.w),
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Colors.grey.shade400,
+                                          Colors.grey.shade600,
+                                        ],
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                      ),
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: Icon(
+                                      Icons.cancel,
+                                      color: Colors.white,
+                                      size: 24.sp,
+                                    ),
+                                  ),
+                                  title: Text(
+                                    "Cancel",
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 16.sp,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  onTap: () {
+                                    Navigator.pop(context);
+                                  },
+                                ),
+                              ),
+                              SizedBox(height: 16.h),
                             ],
                           ),
                         );
                       },
                     );
                   },
-                );
-              },
-            ),
+                ),
+              ),
+              Container(
+                margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  leading: Container(
+                    padding: EdgeInsets.all(8.w),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.red.shade400, Colors.red.shade600],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.photo_library,
+                      color: Colors.white,
+                      size: 24.sp,
+                    ),
+                  ),
+                  title: Text(
+                    "Pick from Gallery",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickMedia(ImageSource.gallery);
+                  },
+                ),
+              ),
+              Container(
+                margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  leading: Container(
+                    padding: EdgeInsets.all(8.w),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.grey.shade400, Colors.grey.shade600],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.cancel, color: Colors.white, size: 24.sp),
+                  ),
+                  title: Text(
+                    "Cancel",
+                    style: GoogleFonts.poppins(
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+              SizedBox(height: 16.h),
+            ],
           ),
+        );
+      },
+    );
+  }
+
+  Widget _buildMediaButton({
+    required IconData icon,
+    required String text,
+    required VoidCallback onPressed,
+  }) {
+    return GestureDetector(
+      onTapDown: (_) => _animationController.forward(),
+      onTapUp: (_) => _animationController.reverse(),
+      onTapCancel: () => _animationController.reverse(),
+      onTap: onPressed,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Container(
+          margin: EdgeInsets.symmetric(horizontal: 8.w),
+          child: Column(
+            children: [
+              Container(
+                padding: EdgeInsets.all(12.w),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.red.shade400, Colors.red.shade600],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(12.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.red.shade200.withOpacity(0.5),
+                      spreadRadius: 2,
+                      blurRadius: 6,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: Icon(icon, color: Colors.white, size: 32.sp),
+              ),
+              SizedBox(height: 4.h),
+              Text(
+                text,
+                style: GoogleFonts.poppins(
+                  fontSize: 12.sp,
+                  color: Colors.black87,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMediaThumbnail(int index) {
+    File file = mediaItems[index]['file'];
+    bool isVideo = mediaItems[index]['isVideo'];
+
+    return Stack(
+      alignment: Alignment.topRight,
+      children: [
+        Container(
+          height: 100.h,
+          width: 100.w,
+          margin: EdgeInsets.only(right: 12.w),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12.r),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.3),
+                spreadRadius: 2,
+                blurRadius: 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12.r),
+            child:
+                isVideo
+                    ? Container(
+                      color: Colors.grey.shade300,
+                      child: Center(
+                        child: Icon(
+                          Icons.videocam,
+                          size: 40.sp,
+                          color: Colors.white,
+                        ),
+                      ),
+                    )
+                    : Image.file(file, fit: BoxFit.cover),
+          ),
+        ),
+        GestureDetector(
+          onTap: () => _removeMedia(index),
+          child: Container(
+            margin: EdgeInsets.all(5.w),
+            padding: EdgeInsets.all(4.w),
+            decoration: BoxDecoration(
+              color: Colors.red.shade500,
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Icon(Icons.close, size: 16.sp, color: Colors.white),
+          ),
+        ),
       ],
+    );
+  }
+
+  Widget _buildMediaSection() {
+    return Container(
+      padding: EdgeInsets.symmetric(vertical: 12.h),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (mediaItems.isNotEmpty)
+            SizedBox(
+              height: 100.h,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: mediaItems.length,
+                itemBuilder: (context, index) {
+                  return _buildMediaThumbnail(index);
+                },
+              ),
+            ),
+          if (mediaItems.isNotEmpty) SizedBox(height: 12.h),
+          _buildMediaButton(
+            icon: Icons.add_a_photo,
+            text: mediaItems.isEmpty ? "Add Media" : "Add More",
+            onPressed: _showMediaOptions,
+          ),
+        ],
+      ),
     );
   }
 
@@ -463,35 +995,92 @@ class _SosScreenState extends State<SosScreen> {
     showModalBottomSheet(
       isScrollControlled: true,
       context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+      ),
+      backgroundColor: Colors.transparent,
       builder: (BuildContext context) {
-        return SizedBox(
+        return Container(
           height: MediaQuery.of(context).size.height * 0.6,
-          child: Container(
-            height:
-                MediaQuery.of(context).size.height * 0.6, // Set a fixed height
-            padding: EdgeInsets.all(20.w),
-            child: ListView(
-              children: [
-                Text(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.white, Colors.grey.shade50],
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+            ),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20.r)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                spreadRadius: 2,
+                blurRadius: 10,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          padding: EdgeInsets.symmetric(vertical: 16.h),
+          child: ListView(
+            children: [
+              Center(
+                child: Container(
+                  width: 40.w,
+                  height: 5.h,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(10.r),
+                  ),
+                ),
+              ),
+              SizedBox(height: 20.h),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.w),
+                child: Text(
                   "Select Location",
                   style: GoogleFonts.poppins(
                     fontSize: 18.sp,
                     fontWeight: FontWeight.w600,
-                    color: Colors.black87, // Added color
+                    color: Colors.black87,
                   ),
                 ),
-                SizedBox(height: 20.h),
-                ListTile(
-                  leading: Icon(
-                    Icons.gps_fixed,
-                    color: Colors.red,
-                  ), // Added color
+              ),
+              SizedBox(height: 16.h),
+              Container(
+                margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  leading: Container(
+                    padding: EdgeInsets.all(8.w),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.red.shade400, Colors.red.shade600],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.gps_fixed,
+                      color: Colors.white,
+                      size: 24.sp,
+                    ),
+                  ),
                   title: Text(
                     "Use Current GPS Location",
                     style: GoogleFonts.poppins(
-                      fontSize: 16.sp, // Increased font size
-                      fontWeight: FontWeight.w500, // Added font weight
-                      color: Colors.black87, // Added color
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
                     ),
                   ),
                   onTap: () {
@@ -499,14 +1088,40 @@ class _SosScreenState extends State<SosScreen> {
                     _requestLocationPermission();
                   },
                 ),
-                ListTile(
-                  leading: Icon(Icons.search, color: Colors.red), // Added color
+              ),
+              Container(
+                margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.grey.withOpacity(0.1),
+                      spreadRadius: 1,
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: ListTile(
+                  leading: Container(
+                    padding: EdgeInsets.all(8.w),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.red.shade400, Colors.red.shade600],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.search, color: Colors.white, size: 24.sp),
+                  ),
                   title: Text(
                     "Type Location",
                     style: GoogleFonts.poppins(
-                      fontSize: 16.sp, // Increased font size
-                      fontWeight: FontWeight.w500, // Added font weight
-                      color: Colors.black87, // Added color
+                      fontSize: 16.sp,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.black87,
                     ),
                   ),
                   onTap: () {
@@ -514,9 +1129,9 @@ class _SosScreenState extends State<SosScreen> {
                     _showLocationInputDialog(context);
                   },
                 ),
-                SizedBox(height: 50.h),
-              ],
-            ),
+              ),
+              SizedBox(height: 16.h),
+            ],
           ),
         );
       },
@@ -529,6 +1144,10 @@ class _SosScreenState extends State<SosScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20.r),
+          ),
+          backgroundColor: Colors.white,
           title: Text(
             "Enter Location",
             style: GoogleFonts.poppins(
@@ -547,6 +1166,18 @@ class _SosScreenState extends State<SosScreen> {
                 fontSize: 14.sp,
                 color: Colors.grey,
               ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12.r),
+                borderSide: BorderSide(color: Colors.red.shade500),
+              ),
             ),
           ),
           actions: [
@@ -559,9 +1190,7 @@ class _SosScreenState extends State<SosScreen> {
                   color: Colors.black87,
                 ),
               ),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
+              onPressed: () => Navigator.pop(context),
             ),
             TextButton(
               child: Text(
@@ -569,14 +1198,16 @@ class _SosScreenState extends State<SosScreen> {
                 style: GoogleFonts.poppins(
                   fontSize: 14.sp,
                   fontWeight: FontWeight.w500,
-                  color: Colors.black87,
+                  color: Colors.red.shade500,
                 ),
               ),
               onPressed: () {
-                Navigator.of(context).pop();
-                setState(() {
-                  currentLocation = typedLocation;
-                });
+                Navigator.pop(context);
+                if (mounted) {
+                  setState(() {
+                    currentLocation = typedLocation;
+                  });
+                }
               },
             ),
           ],

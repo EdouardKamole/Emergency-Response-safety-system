@@ -1,6 +1,7 @@
 import 'package:emergency_app/screens/rescue_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:emergency_app/screens/dashboard_screen.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -27,7 +28,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Center(child: widgetOptions[selectedIndex]),
+      body: SafeArea(child: Center(child: widgetOptions[selectedIndex])),
+
       bottomNavigationBar: BottomNavigationBar(
         items: [
           BottomNavigationBarItem(
@@ -43,8 +45,14 @@ class _HomeScreenState extends State<HomeScreen> {
         onTap: onItemTapped,
         selectedItemColor: Colors.red,
         unselectedItemColor: Colors.grey,
-        selectedLabelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-        unselectedLabelStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        selectedLabelStyle: GoogleFonts.poppins(
+          fontWeight: FontWeight.w600,
+          fontSize: 14.sp,
+        ),
+        unselectedLabelStyle: GoogleFonts.poppins(
+          fontWeight: FontWeight.w600,
+          fontSize: 14.sp,
+        ),
       ),
     );
   }
