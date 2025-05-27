@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:io';
+import 'package:emergency_app/screens/track_rescue.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -6,6 +8,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class SosScreen extends StatefulWidget {
   final int? selectedIndex;
@@ -21,17 +26,15 @@ class _SosScreenState extends State<SosScreen>
   int selectedIndex = -1;
   String currentLocation = "Fetching Location...";
   String notes = "";
+  Position? _currentPosition;
   List<Map<String, dynamic>> gridItems = [
-    {
-      'icon': Icons.medical_services,
-      'label': 'Medical',
-    }, // Index 0 (Health Care)
-    {'icon': Icons.local_police, 'label': 'Police'}, // Index 1 (Police)
-    {'icon': Icons.fire_truck, 'label': 'Fire'}, // Index 2 (Fire & Safety)
-    {'icon': Icons.car_crash, 'label': 'Accident'}, // Index 3 (Accident)
-    {'icon': Icons.warning, 'label': 'Hazard'}, // Index 4
-    {'icon': Icons.other_houses, 'label': 'Other'}, // Index 5
-    {'icon': Icons.sos, 'label': 'SOS'}, // Index 6 (SOS)
+    {'icon': Icons.medical_services, 'label': 'Medical'},
+    {'icon': Icons.local_police, 'label': 'Police'},
+    {'icon': Icons.fire_truck, 'label': 'Fire'},
+    {'icon': Icons.car_crash, 'label': 'Accident'},
+    {'icon': Icons.warning, 'label': 'Hazard'},
+    {'icon': Icons.other_houses, 'label': 'Other'},
+    {'icon': Icons.sos, 'label': 'SOS'},
   ];
 
   List<Map<String, dynamic>> mediaItems = [];
@@ -90,6 +93,7 @@ class _SosScreenState extends State<SosScreen>
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
+      _currentPosition = position;
       List<Placemark> placemarks = await placemarkFromCoordinates(
         position.latitude,
         position.longitude,
@@ -122,7 +126,6 @@ class _SosScreenState extends State<SosScreen>
   Future<void> _pickMedia(ImageSource source, {bool isVideo = false}) async {
     final ImagePicker picker = ImagePicker();
 
-    // Request permissions based on the source
     if (source == ImageSource.camera) {
       var cameraStatus = await Permission.camera.status;
       if (!cameraStatus.isGranted) {
@@ -169,7 +172,6 @@ class _SosScreenState extends State<SosScreen>
           }
         }
       } else {
-        // Check if pickMultipleMedia is supported (fallback if not)
         try {
           final List<XFile> media = await picker.pickMultipleMedia();
           if (media.isNotEmpty && mounted) {
@@ -183,7 +185,6 @@ class _SosScreenState extends State<SosScreen>
             });
           }
         } catch (e) {
-          // Fallback to pickImage if pickMultipleMedia fails
           final XFile? image = await picker.pickImage(source: source);
           if (image != null && mounted) {
             setState(() {
@@ -207,6 +208,184 @@ class _SosScreenState extends State<SosScreen>
         mediaItems.removeAt(index);
       });
     }
+  }
+
+  Future<void> _submitReport() async {
+    if (selectedIndex == -1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select an emergency type")),
+      );
+      return;
+    }
+
+    if (_currentPosition == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Location not available")));
+      return;
+    }
+
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("User not authenticated")));
+      return;
+    }
+
+    try {
+      // Upload media to Firebase Storage
+      final storage = FirebaseStorage.instance;
+      final mediaUrls = <String>[];
+      for (final media in mediaItems) {
+        final file = media['file'] as File;
+        final storageRef = storage.ref().child(
+          'reports/${user.uid}/${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}',
+        );
+        await storageRef.putFile(file);
+        final url = await storageRef.getDownloadURL();
+        mediaUrls.add(url);
+      }
+
+      // Save report to Realtime Database
+      final database = FirebaseDatabase.instance.ref();
+      final reportRef = database.child('reports').push();
+      await reportRef.set({
+        'reportedBy': user.uid,
+        'location': {
+          'latitude': _currentPosition!.latitude,
+          'longitude': _currentPosition!.longitude,
+          'timestamp': DateTime.now().toIso8601String(),
+        },
+        'media': mediaUrls,
+        'status': 'reported',
+        'type': gridItems[selectedIndex]['label'],
+        'notes': notes,
+        'assignedRescuer': {}, // Initially empty
+      });
+
+      // Insert fake rescuer data
+      const fakeRescuerId = 'fake_rescuer_001';
+      // Start rescuer slightly offset from emergency location (e.g., 0.01 degrees ~ 1km)
+      final fakeRescuerLocation = {
+        'latitude': _currentPosition!.latitude + 0.01,
+        'longitude': _currentPosition!.longitude + 0.01,
+        'timestamp': DateTime.now().toIso8601String(),
+        'eta': 300, // Fake ETA: 5 minutes in seconds
+      };
+
+      // Add fake rescuer to assignedRescuer
+      await reportRef
+          .child('assignedRescuer/$fakeRescuerId')
+          .set(fakeRescuerLocation);
+
+      // Add fake rescuer to activeRescuers
+      await database.child('activeRescuers/$fakeRescuerId').set({
+        'latitude': fakeRescuerLocation['latitude'],
+        'longitude': fakeRescuerLocation['longitude'],
+        'timestamp': fakeRescuerLocation['timestamp'],
+        'status': 'en_route',
+      });
+
+      // Start simulating rescuer movement
+      _simulateRescuerUpdates(
+        reportId: reportRef.key!,
+        rescuerId: fakeRescuerId,
+        emergencyLat: _currentPosition!.latitude,
+        emergencyLon: _currentPosition!.longitude,
+      );
+
+      // Show confirmation
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Emergency report submitted successfully"),
+          ),
+        );
+
+        // Navigate to TrackRescuerScreen
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => TrackRescuerScreen(
+                  reportId: reportRef.key!,
+                  emergencyLat: _currentPosition!.latitude,
+                  emergencyLon: _currentPosition!.longitude,
+                ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error submitting report: ${e.toString()}")),
+        );
+      }
+    }
+  }
+
+  // Simulate rescuer moving toward the emergency location
+  void _simulateRescuerUpdates({
+    required String reportId,
+    required String rescuerId,
+    required double emergencyLat,
+    required double emergencyLon,
+  }) {
+    double currentLat = emergencyLat + 0.01; // Starting position
+    double currentLon = emergencyLon + 0.01;
+    const step = 0.001; // Move 0.001 degrees (~100m) per update
+    const interval = Duration(seconds: 5); // Update every 5 seconds
+
+    Timer.periodic(interval, (timer) async {
+      // Calculate distance to emergency
+      double distance = Geolocator.distanceBetween(
+        currentLat,
+        currentLon,
+        emergencyLat,
+        emergencyLon,
+      );
+
+      // Stop if close to emergency (within 100 meters)
+      if (distance < 100) {
+        timer.cancel();
+        return;
+      }
+
+      // Move toward emergency
+      if (currentLat > emergencyLat) {
+        currentLat -= step;
+      } else if (currentLat < emergencyLat) {
+        currentLat += step;
+      }
+      if (currentLon > emergencyLon) {
+        currentLon -= step;
+      } else if (currentLon < emergencyLon) {
+        currentLon += step;
+      }
+
+      // Calculate fake ETA based on distance (assuming 10 meters/second speed)
+      int etaSeconds = (distance / 10).round();
+
+      final database = FirebaseDatabase.instance.ref();
+      final updateData = {
+        'latitude': currentLat,
+        'longitude': currentLon,
+        'timestamp': DateTime.now().toIso8601String(),
+        'eta': etaSeconds,
+      };
+
+      // Update assignedRescuer
+      await database
+          .child('reports/$reportId/assignedRescuer/$rescuerId')
+          .update(updateData);
+
+      // Update activeRescuers
+      await database.child('activeRescuers/$rescuerId').update({
+        ...updateData,
+        'status': 'en_route',
+      });
+    });
   }
 
   @override
@@ -242,7 +421,6 @@ class _SosScreenState extends State<SosScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Selected Emergency Display
                 Text(
                   "Emergency Type",
                   style: GoogleFonts.poppins(
@@ -281,7 +459,6 @@ class _SosScreenState extends State<SosScreen>
                   ),
                 ),
                 SizedBox(height: 24.h),
-                // Location Section
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -339,7 +516,6 @@ class _SosScreenState extends State<SosScreen>
                   ),
                 ),
                 SizedBox(height: 24.h),
-                // Media Upload Section
                 Row(
                   children: [
                     Text(
@@ -364,7 +540,6 @@ class _SosScreenState extends State<SosScreen>
                 SizedBox(height: 12.h),
                 _buildMediaSection(),
                 SizedBox(height: 24.h),
-                // Notes Section
                 Row(
                   children: [
                     Text(
@@ -421,18 +596,10 @@ class _SosScreenState extends State<SosScreen>
                   ),
                 ),
                 SizedBox(height: 32.h),
-                // Submit Button
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed:
-                        selectedIndex == -1
-                            ? null
-                            : () {
-                              print(
-                                "Submitting report with media: $mediaItems, notes: $notes",
-                              );
-                            },
+                    onPressed: selectedIndex == -1 ? null : _submitReport,
                     style: ElevatedButton.styleFrom(
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12.r),
@@ -1201,12 +1368,41 @@ class _SosScreenState extends State<SosScreen>
                   color: Colors.red.shade500,
                 ),
               ),
-              onPressed: () {
+              onPressed: () async {
                 Navigator.pop(context);
-                if (mounted) {
-                  setState(() {
-                    currentLocation = typedLocation;
-                  });
+                if (typedLocation.isNotEmpty) {
+                  try {
+                    List<Location> locations = await locationFromAddress(
+                      typedLocation,
+                    );
+                    if (locations.isNotEmpty && mounted) {
+                      setState(() {
+                        _currentPosition = Position(
+                          latitude: locations[0].latitude,
+                          longitude: locations[0].longitude,
+                          timestamp: DateTime.now(),
+                          accuracy: 0,
+                          altitude: 0,
+                          heading: 0,
+                          speed: 0,
+                          speedAccuracy: 0,
+                          altitudeAccuracy: 0,
+                          headingAccuracy: 0,
+                        );
+                        currentLocation = typedLocation;
+                      });
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            "Error finding location: ${e.toString()}",
+                          ),
+                        ),
+                      );
+                    }
+                  }
                 }
               },
             ),

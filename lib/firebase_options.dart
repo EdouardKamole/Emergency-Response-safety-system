@@ -47,6 +47,7 @@ class DefaultFirebaseOptions {
     appId: '1:282826622893:android:c77bc2cf0eef5196a34324',
     messagingSenderId: '282826622893',
     projectId: 'emergency-system-aef7e',
+    databaseURL: 'https://emergency-system-aef7e-default-rtdb.firebaseio.com',
     storageBucket: 'emergency-system-aef7e.firebasestorage.app',
   );
 

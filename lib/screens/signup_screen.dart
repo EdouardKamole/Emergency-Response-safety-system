@@ -1,3 +1,4 @@
+import 'package:emergency_app/screens/home_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -120,7 +121,7 @@ class _SignupScreenState extends State<SignupScreen> {
           .set({
             'fullName': googleUser.displayName ?? "",
             'email': googleUser.email,
-            // Add other fields as necessary
+            'id': userCredential.user?.uid,
           });
 
       print("Signup with Google successful!");
@@ -132,7 +133,7 @@ class _SignupScreenState extends State<SignupScreen> {
       );
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => LoginScreen()),
+        MaterialPageRoute(builder: (context) => HomeScreen()),
       );
     } catch (e) {
       print("Error during Google Sign-In: $e");

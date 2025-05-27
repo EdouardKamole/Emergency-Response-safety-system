@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "282826622893",
+    "firebase_url": "https://emergency-system-aef7e-default-rtdb.firebaseio.com",
     "project_id": "emergency-system-aef7e",
     "storage_bucket": "emergency-system-aef7e.firebasestorage.app"
   },
