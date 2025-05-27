@@ -1,4 +1,6 @@
 import 'package:emergency_app/screens/dashboard_screen.dart';
+import 'package:emergency_app/screens/history_screen.dart';
+import 'package:emergency_app/screens/profile_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,7 +17,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int selectedIndex = 0;
-  Map<String, dynamic>? latestReport; // Store latest report data
+  Map<String, dynamic>? latestReport;
 
   @override
   void initState() {
@@ -64,7 +66,7 @@ class _HomeScreenState extends State<HomeScreen> {
   // Build widget options dynamically based on latestReport
   List<Widget> get widgetOptions {
     return [
-      const DashboardScreen(),
+      DashboardScreen(),
       latestReport != null
           ? TrackRescuerScreen(
             reportId: latestReport!['reportId'],
@@ -81,6 +83,8 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
+      HistoryScreen(),
+      ProfileScreen(),
     ];
   }
 
@@ -97,6 +101,14 @@ class _HomeScreenState extends State<HomeScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.location_on, size: 18.sp), // Icon for tracking
             label: 'Track',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history, size: 18.sp),
+            label: 'History',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.person, size: 18.sp),
+            label: 'Profile',
           ),
         ],
         currentIndex: selectedIndex,

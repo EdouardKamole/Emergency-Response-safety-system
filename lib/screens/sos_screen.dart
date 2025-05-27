@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emergency_app/screens/track_rescue.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -264,9 +265,30 @@ class _SosScreenState extends State<SosScreen>
         'assignedRescuer': {}, // Initially empty
       });
 
+      // Save report to Firestore
+      final firestore = FirebaseFirestore.instance;
+      await firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('emergencyReports')
+          .doc(
+            reportRef.key,
+          ) // Use same ID as Realtime Database for consistency
+          .set({
+            'reportType': gridItems[selectedIndex]['label'],
+            'description': notes,
+            'status': 'Pending', // Match HistoryScreen status format
+            'createdAt': Timestamp.now(),
+            'media': mediaUrls,
+            'location': {
+              'latitude': _currentPosition!.latitude,
+              'longitude': _currentPosition!.longitude,
+              'address': currentLocation,
+            },
+          }, SetOptions(merge: true));
+
       // Insert fake rescuer data
       const fakeRescuerId = 'fake_rescuer_001';
-      // Start rescuer slightly offset from emergency location (e.g., 0.01 degrees ~ 1km)
       final fakeRescuerLocation = {
         'latitude': _currentPosition!.latitude + 0.01,
         'longitude': _currentPosition!.longitude + 0.01,
@@ -274,12 +296,12 @@ class _SosScreenState extends State<SosScreen>
         'eta': 300, // Fake ETA: 5 minutes in seconds
       };
 
-      // Add fake rescuer to assignedRescuer
+      // Add fake rescuer to assignedRescuer in Realtime Database
       await reportRef
           .child('assignedRescuer/$fakeRescuerId')
           .set(fakeRescuerLocation);
 
-      // Add fake rescuer to activeRescuers
+      // Add fake rescuer to activeRescuers in Realtime Database
       await database.child('activeRescuers/$fakeRescuerId').set({
         'latitude': fakeRescuerLocation['latitude'],
         'longitude': fakeRescuerLocation['longitude'],

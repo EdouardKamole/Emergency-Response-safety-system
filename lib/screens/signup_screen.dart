@@ -54,7 +54,8 @@ class _SignupScreenState extends State<SignupScreen> {
             .set({
               'fullName': _fullNameController.text.trim(),
               'email': _emailController.text.trim(),
-              // Add other fields as necessary
+              'id': userCredential.user?.uid,
+              'role': 'user',
             });
 
         print("Signup successful!");
@@ -122,6 +123,7 @@ class _SignupScreenState extends State<SignupScreen> {
             'fullName': googleUser.displayName ?? "",
             'email': googleUser.email,
             'id': userCredential.user?.uid,
+            'role': 'user',
           });
 
       print("Signup with Google successful!");
