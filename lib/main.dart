@@ -5,7 +5,7 @@ import 'package:emergency_app/screens/signup_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // Initialize Firebase
+  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 

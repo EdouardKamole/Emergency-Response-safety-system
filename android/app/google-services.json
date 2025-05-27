@@ -1,42 +1,42 @@
 {
   "project_info": {
-    "project_number": "282826622893",
-    "firebase_url": "https://emergency-system-aef7e-default-rtdb.firebaseio.com",
-    "project_id": "emergency-system-aef7e",
-    "storage_bucket": "emergency-system-aef7e.firebasestorage.app"
+    "project_number": "459911736231",
+    "firebase_url": "https://emergency-response-syste-7d3e2-default-rtdb.firebaseio.com",
+    "project_id": "emergency-response-syste-7d3e2",
+    "storage_bucket": "emergency-response-syste-7d3e2.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:282826622893:android:c77bc2cf0eef5196a34324",
+        "mobilesdk_app_id": "1:459911736231:android:356014d64d845ca545e482",
         "android_client_info": {
           "package_name": "com.example.emergency_app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "282826622893-39jd7r4ec0dri1069ihqus2t463ahi82.apps.googleusercontent.com",
+          "client_id": "459911736231-es63srve8ehim2g89tsg2pcj6khnnjlj.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.emergency_app",
-            "certificate_hash": "e6430dd9d47d3583ab7c9a4dcf41e022f69a74ea"
+            "certificate_hash": "97e39f3b1b1ad5fa20ade3c6dddc55dba53fa855"
           }
         },
         {
-          "client_id": "282826622893-camqe3l1lt0tdn99096ennqqd98mlbhh.apps.googleusercontent.com",
+          "client_id": "459911736231-psg307ohncc0r8bnb3f17cqqfii5rbs8.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyCQGW0T1M7T_egHM6pL51Lmkmcofn8IPUo"
+          "current_key": "AIzaSyA2mFzgiaPnxEmbBSSkelOIK1uJTosMWPA"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "282826622893-camqe3l1lt0tdn99096ennqqd98mlbhh.apps.googleusercontent.com",
+              "client_id": "459911736231-psg307ohncc0r8bnb3f17cqqfii5rbs8.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
