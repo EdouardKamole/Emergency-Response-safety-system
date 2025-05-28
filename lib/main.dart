@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:emergency_app/screens/signup_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,8 +26,8 @@ class MyApp extends StatelessWidget {
           theme: ThemeData(
             primarySwatch: Colors.red,
             textTheme: TextTheme(
-              bodyLarge: TextStyle(fontSize: 16.sp),
-              bodyMedium: TextStyle(fontSize: 14.sp),
+              bodyLarge: GoogleFonts.poppins(fontSize: 16.sp),
+              bodyMedium: GoogleFonts.poppins(fontSize: 14.sp),
             ),
           ),
           home: SignupScreen(),
