@@ -23,6 +23,14 @@
           }
         },
         {
+          "client_id": "459911736231-vhqsqiq75navi2r3vq5o44s9i6tesnql.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.emergency_app",
+            "certificate_hash": "f897f3e588f4ef6444c348601e911c1da798e30b"
+          }
+        },
+        {
           "client_id": "459911736231-psg307ohncc0r8bnb3f17cqqfii5rbs8.apps.googleusercontent.com",
           "client_type": 3
         }
