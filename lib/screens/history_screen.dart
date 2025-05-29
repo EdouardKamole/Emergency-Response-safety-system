@@ -6,7 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  const HistoryScreen({Key? key}) : super(key: key);
 
   @override
   _HistoryScreenState createState() => _HistoryScreenState();
@@ -19,19 +19,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF9F9F9),
       appBar: AppBar(
-        iconTheme: const IconThemeData(color: Colors.white),
         backgroundColor: Colors.blue[400],
         elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
-          'Emergency Report History',
+          'Report History',
           style: GoogleFonts.poppins(
-            fontSize: 18.sp,
+            fontSize: 20.sp,
             fontWeight: FontWeight.w600,
             color: Colors.white,
           ),
         ),
-        centerTitle: true,
       ),
       body: Padding(
         padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
@@ -90,7 +91,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     SizedBox(height: 12.h),
                     Text(
-                      'No emergency reports found.',
+                      'No reports found.',
                       style: GoogleFonts.poppins(
                         fontSize: 16.sp,
                         color: Colors.grey[600],
@@ -99,7 +100,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ),
                     SizedBox(height: 8.h),
                     Text(
-                      'Your emergency reports will appear here.',
+                      'Your reports will appear here.',
                       style: GoogleFonts.poppins(
                         fontSize: 14.sp,
                         color: Colors.grey[500],
@@ -131,146 +132,121 @@ class _HistoryScreenState extends State<HistoryScreen> {
                             'Unknown location'
                         : 'Unknown location';
 
-                return GestureDetector(
-                  onTap: () {
-                    // Placeholder for future report details screen
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Tapped on $reportType report')),
-                    );
-                  },
-                  child: Card(
-                    elevation: 4,
-                    margin: EdgeInsets.symmetric(vertical: 8.h),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16.r),
-                    ),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [Colors.white, Colors.grey[50]!],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(16.r),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.1),
-                            spreadRadius: 2,
-                            blurRadius: 6,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
+                return Container(
+                  margin: EdgeInsets.symmetric(vertical: 8.h),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 5,
+                        offset: const Offset(0, 2),
                       ),
-                      child: Padding(
-                        padding: EdgeInsets.all(16.w),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [
-                                Flexible(
-                                  child: Text(
-                                    reportType,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 16.sp,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.blue[700],
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
+                    ],
+                  ),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: 16.w,
+                      vertical: 12.h,
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(8.w),
+                          decoration: BoxDecoration(
+                            color: Colors.blue[50],
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          child: Icon(
+                            Icons.report_gmailerrorred,
+                            color: Colors.blue[400],
+                            size: 24.sp,
+                          ),
+                        ),
+                        SizedBox(width: 12.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                reportType,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.w500,
+                                  color: Colors.black87,
                                 ),
-                                Container(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 12.w,
-                                    vertical: 4.h,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        status == 'Resolved'
-                                            ? Colors.green[100]
-                                            : status == 'Pending'
-                                            ? Colors.orange[100]
-                                            : Colors.red[100],
-                                    borderRadius: BorderRadius.circular(8.r),
-                                    border: Border.all(
-                                      color:
-                                          status == 'Resolved'
-                                              ? Colors.green[300]!
-                                              : status == 'Pending'
-                                              ? Colors.orange[300]!
-                                              : Colors.red[300]!,
-                                      width: 1.w,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    status,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 12.sp,
-                                      fontWeight: FontWeight.w500,
-                                      color:
-                                          status == 'Resolved'
-                                              ? Colors.green[800]
-                                              : status == 'Pending'
-                                              ? Colors.orange[800]
-                                              : Colors.red[800],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 8.h),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.location_pin,
-                                  size: 16.sp,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              SizedBox(height: 4.h),
+                              Text(
+                                location,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12.sp,
                                   color: Colors.grey[600],
                                 ),
-                                SizedBox(width: 4.w),
-                                Expanded(
-                                  child: Text(
-                                    location,
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 13.sp,
-                                      color: Colors.grey[700],
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 8.h),
-                            Text(
-                              description,
-                              style: GoogleFonts.poppins(
-                                fontSize: 14.sp,
-                                color: Colors.grey[800],
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
+                              SizedBox(height: 4.h),
+                              Text(
+                                description,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13.sp,
+                                  color: Colors.grey[700],
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 8.w,
+                                vertical: 4.h,
+                              ),
+                              decoration: BoxDecoration(
+                                color:
+                                    status == 'Resolved'
+                                        ? Colors.green[100]
+                                        : status == 'Pending'
+                                        ? Colors.orange[100]
+                                        : Colors.red[100],
+                                borderRadius: BorderRadius.circular(6.r),
+                              ),
+                              child: Text(
+                                status,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w500,
+                                  color:
+                                      status == 'Resolved'
+                                          ? Colors.green[800]
+                                          : status == 'Pending'
+                                          ? Colors.orange[800]
+                                          : Colors.red[800],
+                                ),
+                              ),
                             ),
-                            SizedBox(height: 12.h),
-                            Row(
-                              children: [
-                                Icon(
-                                  Icons.calendar_today,
-                                  size: 14.sp,
-                                  color: Colors.grey[500],
-                                ),
-                                SizedBox(width: 4.w),
-                                Text(
-                                  'Reported on: $formattedDate',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12.sp,
-                                    color: Colors.grey[600],
-                                  ),
-                                ),
-                              ],
+                            SizedBox(height: 4.h),
+                            Text(
+                              formattedDate,
+                              style: GoogleFonts.poppins(
+                                fontSize: 10.sp,
+                                color: Colors.grey[500],
+                              ),
                             ),
                           ],
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 );

@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:emergency_app/screens/sos_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
+  const DashboardScreen({Key? key}) : super(key: key);
 
   @override
   State<DashboardScreen> createState() => _DashboardScreenState();
@@ -26,13 +26,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     super.initState();
     _requestLocationPermission();
 
-    // Initialize the animation controller for the SOS button rings
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1500),
     )..repeat(reverse: true);
 
-    _ringAnimation = Tween<double>(begin: 1.0, end: 1.1).animate(
+    _ringAnimation = Tween<double>(begin: 1.0, end: 1.2).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
   }
@@ -96,69 +95,108 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              // Header Section
-              SizedBox(
-                height: 180.h,
-                child: Container(
-                  padding: EdgeInsets.all(24.w),
-                  color: Colors.blue[300],
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            "Welcome, $userName",
-                            style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 24.sp,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.location_pin,
-                                color: Colors.white,
-                                size: 20.sp,
-                              ),
-                              SizedBox(width: 4.w),
-                              SizedBox(
-                                width: 200.w,
-                                child: Text(
-                                  currentLocation.length > 25
-                                      ? '${currentLocation.substring(0, 25)}...'
-                                      : currentLocation,
-                                  style: GoogleFonts.poppins(
-                                    color: Colors.white70,
-                                    fontSize: 16.sp,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 1,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.black87),
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFE8F5E9), Color(0xFFDCEDC8)],
+          ),
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // User Info Card
+                Container(
+                  padding: EdgeInsets.all(20.w),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.3),
+                        spreadRadius: 2,
+                        blurRadius: 10,
+                        offset: const Offset(0, 3),
                       ),
-                      Row(
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 30.r,
+                        backgroundColor: Colors.blue.shade100,
+                        child: Text(
+                          userName[0].toUpperCase(),
+                          style: GoogleFonts.poppins(
+                            fontSize: 24.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 16.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Welcome, $userName",
+                              style: GoogleFonts.poppins(
+                                fontSize: 20.sp,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87,
+                              ),
+                            ),
+                            SizedBox(height: 8.h),
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on,
+                                  color: Colors.grey.shade600,
+                                  size: 20.sp,
+                                ),
+                                SizedBox(width: 4.w),
+                                Expanded(
+                                  child: Text(
+                                    currentLocation.length > 30
+                                        ? '${currentLocation.substring(0, 30)}...'
+                                        : currentLocation,
+                                    style: GoogleFonts.poppins(
+                                      color: Colors.grey.shade600,
+                                      fontSize: 14.sp,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      Column(
                         children: [
                           Icon(
                             Icons.wb_sunny,
-                            color: Colors.white,
+                            color: Colors.orange.shade600,
                             size: 24.sp,
                           ),
-                          SizedBox(width: 4.w),
+                          SizedBox(height: 4.h),
                           Text(
                             temperature,
                             style: GoogleFonts.poppins(
-                              color: Colors.white,
-                              fontSize: 18.sp,
+                              color: Colors.black87,
+                              fontSize: 16.sp,
                             ),
                           ),
                         ],
@@ -166,18 +204,33 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ],
                   ),
                 ),
-              ),
-              SizedBox(height: 20.h),
-              // Grid Section
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.w),
-                child: GridView.count(
+                SizedBox(height: 30.h),
+
+                // SOS Button
+                Center(
+                  child: AnimatedSosButton(
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => const SosScreen(selectedIndex: 6),
+                        ),
+                      );
+                    },
+                    ringAnimation: _ringAnimation,
+                  ),
+                ),
+                SizedBox(height: 40.h),
+
+                // Emergency Services Grid
+                GridView.count(
                   crossAxisCount: 2,
                   shrinkWrap: true,
-                  crossAxisSpacing: 12.w,
-                  mainAxisSpacing: 12.h,
+                  crossAxisSpacing: 15.w,
+                  mainAxisSpacing: 15.h,
                   physics: const NeverScrollableScrollPhysics(),
-                  childAspectRatio: 1.0,
+                  childAspectRatio: 1.1,
                   children: [
                     EmergencyCard(
                       icon: Icons.local_hospital,
@@ -241,22 +294,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ),
                   ],
                 ),
-              ),
-              SizedBox(height: 20.h),
-              // SOS Button with Outer Rings
-              AnimatedSosButton(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const SosScreen(selectedIndex: 6),
-                    ),
-                  );
-                },
-                ringAnimation: _ringAnimation,
-              ),
-              SizedBox(height: 20.h),
-            ],
+                SizedBox(height: 40.h),
+              ],
+            ),
           ),
         ),
       ),
@@ -272,13 +312,13 @@ class EmergencyCard extends StatelessWidget {
   final Function(int) onTap;
 
   const EmergencyCard({
-    super.key,
+    Key? key,
     required this.icon,
     required this.title,
     required this.color,
     required this.index,
     required this.onTap,
-  });
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -287,26 +327,28 @@ class EmergencyCard extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12.r),
+          borderRadius: BorderRadius.circular(15.r),
           boxShadow: [
             BoxShadow(
               color: Colors.grey.withOpacity(0.2),
               spreadRadius: 1,
-              blurRadius: 4,
+              blurRadius: 7,
+              offset: const Offset(0, 3),
             ),
           ],
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 24.sp, color: color),
-            SizedBox(height: 6.h),
+            Icon(icon, size: 30.sp, color: color),
+            SizedBox(height: 8.h),
             Text(
               title,
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w600,
+                fontSize: 14.sp,
+                fontWeight: FontWeight.w500,
+                color: Colors.black87,
               ),
             ),
           ],
@@ -340,13 +382,13 @@ class AnimatedSosButton extends StatelessWidget {
               return Transform.scale(
                 scale: ringAnimation.value * 1.3,
                 child: Container(
-                  width: 120.w,
-                  height: 120.h,
+                  width: 130.w,
+                  height: 130.h,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.red.shade300.withOpacity(0.3),
-                      width: 4.w,
+                      color: Colors.red.shade300.withOpacity(0.4),
+                      width: 5.w,
                     ),
                   ),
                 ),
@@ -360,13 +402,13 @@ class AnimatedSosButton extends StatelessWidget {
               return Transform.scale(
                 scale: ringAnimation.value * 1.15,
                 child: Container(
-                  width: 100.w,
-                  height: 100.h,
+                  width: 110.w,
+                  height: 110.h,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: Colors.red.shade400.withOpacity(0.5),
-                      width: 4.w,
+                      color: Colors.red.shade400.withOpacity(0.6),
+                      width: 5.w,
                     ),
                   ),
                 ),
@@ -375,17 +417,17 @@ class AnimatedSosButton extends StatelessWidget {
           ),
           // Main SOS Button
           Container(
-            width: 80.w,
-            height: 80.h,
+            width: 90.w,
+            height: 90.h,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: Colors.red,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.red.shade300.withOpacity(0.5),
+                  color: Colors.red.shade300.withOpacity(0.6),
                   spreadRadius: 2,
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
+                  blurRadius: 10,
+                  offset: const Offset(0, 5),
                 ),
               ],
             ),
@@ -394,7 +436,7 @@ class AnimatedSosButton extends StatelessWidget {
                 "SOS",
                 style: GoogleFonts.poppins(
                   color: Colors.white,
-                  fontSize: 24.sp,
+                  fontSize: 26.sp,
                   fontWeight: FontWeight.bold,
                 ),
               ),

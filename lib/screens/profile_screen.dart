@@ -5,7 +5,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key});
+  const ProfileScreen({Key? key}) : super(key: key);
 
   @override
   _ProfileScreenState createState() => _ProfileScreenState();
@@ -30,7 +30,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadUserData();
   }
 
-  // Fetch user data exclusively from Firestore
   Future<void> _loadUserData() async {
     User? user = _auth.currentUser;
     if (user == null) {
@@ -80,7 +79,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Save updated data to Firestore
   Future<void> _saveUserData() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -141,10 +139,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF9F9F9),
       appBar: AppBar(
-        iconTheme: const IconThemeData(color: Colors.white),
         backgroundColor: Colors.blue[400],
         elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
           'Profile',
           style: GoogleFonts.poppins(
@@ -153,46 +153,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
             color: Colors.white,
           ),
         ),
-        centerTitle: true,
         actions: [
-          Container(
-            margin: EdgeInsets.only(right: 10.w),
-            child: MaterialButton(
-              color: Colors.amber[600],
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8.r),
-              ),
-              onPressed:
-                  _isLoading
-                      ? null
-                      : () {
-                        if (_isEditing) {
-                          _saveUserData();
-                        } else {
-                          setState(() {
-                            _isEditing = true;
-                          });
-                        }
-                      },
-              child: Row(
-                children: [
-                  Icon(
-                    _isEditing ? Icons.save : Icons.edit,
-                    size: 15.sp,
-                    color: Colors.white,
-                  ),
-                  SizedBox(width: 4.w),
-                  Text(
-                    _isEditing ? 'Save' : 'Edit Profile',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13.sp,
-                      color: Colors.white,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
+          IconButton(
+            icon: Icon(
+              _isEditing ? Icons.save : Icons.edit,
+              color: Colors.white,
             ),
+            onPressed:
+                _isLoading
+                    ? null
+                    : () {
+                      if (_isEditing) {
+                        _saveUserData();
+                      } else {
+                        setState(() {
+                          _isEditing = true;
+                        });
+                      }
+                    },
           ),
         ],
       ),
@@ -205,128 +183,142 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               )
               : Padding(
-                padding: EdgeInsets.all(16.w),
+                padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 20.h),
                 child: Form(
                   key: _formKey,
-                  child: ListView(
+                  child: Column(
                     children: [
-                      // Profile Picture Placeholder
-                      Center(
-                        child: Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 50.r,
-                              backgroundColor: Colors.grey[300],
-                              child: const Icon(
-                                Icons.person,
-                                size: 50,
-                                color: Colors.grey,
+                      // Profile Picture
+                      Stack(
+                        alignment: Alignment.bottomRight,
+                        children: [
+                          CircleAvatar(
+                            radius: 60.r,
+                            backgroundColor: Colors.grey[300],
+                            child: Icon(
+                              Icons.person,
+                              size: 60.sp,
+                              color: Colors.grey,
+                            ),
+                          ),
+                          if (_isEditing)
+                            Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.blue[400],
+                              ),
+                              child: IconButton(
+                                icon: Icon(
+                                  Icons.camera_alt,
+                                  size: 20.sp,
+                                  color: Colors.white,
+                                ),
+                                onPressed: () {
+                                  // TODO: Implement image selection
+                                },
                               ),
                             ),
+                        ],
+                      ),
+                      SizedBox(height: 30.h),
+                      Expanded(
+                        child: ListView(
+                          children: [
+                            // Full Name
+                            _buildTextField(
+                              controller: _nameController,
+                              label: 'Full Name',
+                              hint: 'Enter your full name',
+                              enabled: _isEditing,
+                              validator:
+                                  (value) =>
+                                      value!.isEmpty
+                                          ? 'Please enter your name'
+                                          : null,
+                            ),
+                            SizedBox(height: 20.h),
+
+                            // Phone Number
+                            _buildTextField(
+                              controller: _phoneController,
+                              label: 'Phone Number',
+                              hint: 'Enter your phone number',
+                              enabled: _isEditing,
+                              keyboardType: TextInputType.phone,
+                              validator:
+                                  (value) =>
+                                      value!.isEmpty
+                                          ? 'Please enter your phone number'
+                                          : null,
+                            ),
+                            SizedBox(height: 20.h),
+
+                            // Emergency Contact
+                            _buildTextField(
+                              controller: _emergencyContactController,
+                              label: 'Emergency Contact',
+                              hint: 'Enter an emergency contact number',
+                              enabled: _isEditing,
+                              keyboardType: TextInputType.phone,
+                              validator:
+                                  (value) =>
+                                      value!.isEmpty
+                                          ? 'Please enter an emergency contact'
+                                          : null,
+                            ),
+                            SizedBox(height: 20.h),
+
+                            // Blood Type
+                            _buildTextField(
+                              controller: _bloodTypeController,
+                              label: 'Blood Type',
+                              hint: 'Enter your blood type (e.g., A+, O-)',
+                              enabled: _isEditing,
+                              validator:
+                                  (value) =>
+                                      value!.isEmpty
+                                          ? 'Please enter your blood type'
+                                          : null,
+                            ),
+                            SizedBox(height: 40.h),
+
+                            // Save Button
                             if (_isEditing)
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: CircleAvatar(
-                                  radius: 15.r,
-                                  backgroundColor: Colors.blue[400],
-                                  child: Icon(
-                                    Icons.camera_alt,
-                                    size: 15.sp,
-                                    color: Colors.white,
+                              ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.green[400],
+                                  padding: EdgeInsets.symmetric(vertical: 15.h),
+                                  textStyle: GoogleFonts.poppins(
+                                    fontSize: 16.sp,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(15.r),
                                   ),
                                 ),
+                                onPressed: _isLoading ? null : _saveUserData,
+                                child:
+                                    _isLoading
+                                        ? SizedBox(
+                                          height: 25.h,
+                                          width: 25.w,
+                                          child: CircularProgressIndicator(
+                                            color: Colors.white,
+                                            strokeWidth: 3.w,
+                                          ),
+                                        )
+                                        : Text(
+                                          'Save Profile',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 16.sp,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
                               ),
                           ],
                         ),
                       ),
-                      SizedBox(height: 20.h),
-                      // Name Field
-                      _buildTextField(
-                        controller: _nameController,
-                        label: 'Full Name',
-                        hint: 'Enter your full name',
-                        enabled: _isEditing,
-                        validator:
-                            (value) =>
-                                value!.isEmpty
-                                    ? 'Please enter your name'
-                                    : null,
-                      ),
-                      SizedBox(height: 16.h),
-                      // Phone Number Field
-                      _buildTextField(
-                        controller: _phoneController,
-                        label: 'Phone Number',
-                        hint: 'Enter your phone number',
-                        enabled: _isEditing,
-                        keyboardType: TextInputType.phone,
-                        validator:
-                            (value) =>
-                                value!.isEmpty
-                                    ? 'Please enter your phone number'
-                                    : null,
-                      ),
-                      SizedBox(height: 16.h),
-                      // Emergency Contact Field
-                      _buildTextField(
-                        controller: _emergencyContactController,
-                        label: 'Emergency Contact',
-                        hint: 'Enter an emergency contact number',
-                        enabled: _isEditing,
-                        keyboardType: TextInputType.phone,
-                        validator:
-                            (value) =>
-                                value!.isEmpty
-                                    ? 'Please enter an emergency contact'
-                                    : null,
-                      ),
-                      SizedBox(height: 16.h),
-                      // Blood Type Field
-                      _buildTextField(
-                        controller: _bloodTypeController,
-                        label: 'Blood Type',
-                        hint: 'Enter your blood type (e.g., A+, O-)',
-                        enabled: _isEditing,
-                        validator:
-                            (value) =>
-                                value!.isEmpty
-                                    ? 'Please enter your blood type'
-                                    : null,
-                      ),
-                      SizedBox(height: 20.h),
-                      if (_isEditing)
-                        ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 20.w,
-                              vertical: 15.h,
-                            ),
-                            backgroundColor: Colors.green[400],
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12.r),
-                            ),
-                          ),
-                          onPressed: _isLoading ? null : _saveUserData,
-                          child:
-                              _isLoading
-                                  ? SizedBox(
-                                    height: 20.h,
-                                    width: 20.w,
-                                    child: const CircularProgressIndicator(
-                                      color: Colors.white,
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                  : Text(
-                                    'Save Profile',
-                                    style: GoogleFonts.poppins(
-                                      fontSize: 14.sp,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                        ),
                     ],
                   ),
                 ),
@@ -334,7 +326,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Helper method to build text fields with consistent styling
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -343,35 +334,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
     TextInputType? keyboardType,
     String? Function(String?)? validator,
   }) {
-    return TextFormField(
-      controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        labelStyle: GoogleFonts.poppins(
-          fontSize: 14.sp,
-          color: Colors.grey[600],
-        ),
-        hintStyle: GoogleFonts.poppins(
-          fontSize: 14.sp,
-          color: Colors.grey[400],
-        ),
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r)),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.r),
-          borderSide: BorderSide(color: Colors.grey[300]!),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12.r),
-          borderSide: BorderSide(color: Colors.blue[400]!),
-        ),
-        filled: true,
-        fillColor: enabled ? Colors.white : Colors.grey[100],
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15.r),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.2),
+            spreadRadius: 1,
+            blurRadius: 7,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
-      enabled: enabled,
-      keyboardType: keyboardType,
-      style: GoogleFonts.poppins(fontSize: 14.sp, color: Colors.black87),
-      validator: validator,
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+        child: TextFormField(
+          controller: controller,
+          decoration: InputDecoration(
+            labelText: label,
+            hintText: hint,
+            labelStyle: GoogleFonts.poppins(
+              fontSize: 14.sp,
+              color: Colors.grey[600],
+            ),
+            hintStyle: GoogleFonts.poppins(
+              fontSize: 14.sp,
+              color: Colors.grey[400],
+            ),
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.blue[400]!),
+            ),
+            filled: false,
+          ),
+          enabled: enabled,
+          keyboardType: keyboardType,
+          style: GoogleFonts.poppins(fontSize: 14.sp, color: Colors.black87),
+          validator: validator,
+        ),
+      ),
     );
   }
 }
