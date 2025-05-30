@@ -1,4 +1,3 @@
-import 'package:emergency_app/screens/dashboard_screen.dart';
 import 'package:emergency_app/screens/history_screen.dart';
 import 'package:emergency_app/screens/profile_screen.dart';
 import 'package:flutter/material.dart';
@@ -7,6 +6,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:emergency_app/screens/track_rescue.dart';
+import 'package:emergency_app/screens/sos_screen.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -22,12 +25,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _slideController;
   String userName = "";
   bool isEmergencyActive = false;
+  String currentLocation = "Fetching location..."; // Initial state for location
 
   @override
   void initState() {
     super.initState();
     _fetchLatestReport();
     _fetchUserData();
+    _requestLocationPermission(); // Request and fetch location
 
     // Initialize animations
     _pulseController = AnimationController(
@@ -65,6 +70,76 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       }
     } catch (e) {
       print("Error fetching user data: $e");
+    }
+  }
+
+  // Request location permission
+  Future<void> _requestLocationPermission() async {
+    var status = await Permission.location.status;
+    if (status.isDenied) {
+      if (await Permission.location.request().isGranted) {
+        _getCurrentLocation();
+      } else {
+        if (mounted) {
+          setState(() {
+            currentLocation = "Location permission denied";
+          });
+        }
+        print('Location permission denied');
+      }
+    } else if (status.isGranted) {
+      _getCurrentLocation();
+    } else if (status.isPermanentlyDenied) {
+      if (mounted) {
+        setState(() {
+          currentLocation = "Location permission permanently denied";
+        });
+      }
+      print('Location permission permanently denied');
+      openAppSettings(); // Prompt user to enable in settings
+    }
+  }
+
+  // Fetch current location
+  Future<void> _getCurrentLocation() async {
+    try {
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        if (mounted) {
+          setState(() {
+            currentLocation =
+                "${place.name ?? ''}, ${place.locality ?? ''}, ${place.administrativeArea ?? ''}"
+                    .trim()
+                    .replaceAll(RegExp(r',\s*,'), ',')
+                    .replaceAll(RegExp(r'^\s*,'), '')
+                    .replaceAll(RegExp(r',\s*$'), '');
+            if (currentLocation.isEmpty) {
+              currentLocation = "Location found, but address unavailable";
+            }
+          });
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            currentLocation = "No address found for these coordinates";
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          currentLocation = "Error fetching location: ${e.toString()}";
+        });
+      }
+      print("Error fetching location: $e");
     }
   }
 
@@ -133,11 +208,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            Color(0xFF1565C0), // Deep blue
-            Color(0xFF0D47A1), // Darker blue
-            Color(0xFF001970), // Navy
-          ],
+          colors: [Color(0xFF1565C0), Color(0xFF0D47A1), Color(0xFF001970)],
         ),
       ),
       child: SingleChildScrollView(
@@ -146,9 +217,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             _buildEnhancedHeader(),
             _buildEmergencyStatus(),
             _buildQuickActions(),
+            SizedBox(height: 20.h),
             _buildServiceCategories(),
             _buildRecentActivity(),
-            SizedBox(height: 100.h), // Space for bottom nav
+            SizedBox(height: 100.h),
           ],
         ),
       ),
@@ -234,12 +306,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                         Text(
-                          "Kampala, Central Region",
+                          currentLocation.length > 30
+                              ? '${currentLocation.substring(0, 30)}...'
+                              : currentLocation,
                           style: GoogleFonts.poppins(
                             fontSize: 14.sp,
                             color: Colors.white,
                             fontWeight: FontWeight.w600,
                           ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ],
                     ),
@@ -351,9 +426,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   title: "Emergency",
                   subtitle: "Call Now",
                   color: Colors.red,
-                  onTap: () {
-                    // Navigate to emergency call
-                  },
                 ),
               ),
               SizedBox(width: 12.w),
@@ -363,9 +435,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   title: "Ambulance",
                   subtitle: "Request",
                   color: Colors.orange,
-                  onTap: () {
-                    // Navigate to ambulance request
-                  },
                 ),
               ),
             ],
@@ -380,10 +449,29 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required String title,
     required String subtitle,
     required Color color,
-    required VoidCallback onTap,
   }) {
+    // Map titles to indices for SosScreen
+    int getIndexForTitle(String title) {
+      switch (title) {
+        case "Emergency":
+          return 0; // General emergency, maps to Health Care
+        case "Ambulance":
+          return 3; // Maps to Accident
+        default:
+          return 6; // Fallback for general SOS
+      }
+    }
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => SosScreen(selectedIndex: getIndexForTitle(title)),
+          ),
+        );
+      },
       child: Container(
         padding: EdgeInsets.all(16.w),
         decoration: BoxDecoration(
@@ -498,37 +586,64 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required String title,
     required Color color,
   }) {
-    return Container(
-      padding: EdgeInsets.all(16.w),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+    // Map titles to indices for SosScreen
+    int getIndexForTitle(String title) {
+      switch (title) {
+        case "Health Care":
+          return 0;
+        case "Fire & Safety":
+          return 2;
+        case "Police":
+          return 1;
+        case "Accident":
+          return 3;
+        default:
+          return 6; // Fallback for general SOS
+      }
+    }
+
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => SosScreen(selectedIndex: getIndexForTitle(title)),
+          ),
+        );
+      },
+      child: Container(
+        padding: EdgeInsets.all(16.w),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+          ),
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: color.withOpacity(0.2)),
         ),
-        borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: color.withOpacity(0.2)),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            padding: EdgeInsets.all(12.w),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
-              shape: BoxShape.circle,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: EdgeInsets.all(12.w),
+              decoration: BoxDecoration(
+                color: color.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: color, size: 24.sp),
             ),
-            child: Icon(icon, color: color, size: 24.sp),
-          ),
-          SizedBox(height: 8.h),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
-              fontSize: 12.sp,
-              color: Colors.black87,
-              fontWeight: FontWeight.w600,
+            SizedBox(height: 8.h),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: GoogleFonts.poppins(
+                fontSize: 12.sp,
+                color: Colors.black87,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

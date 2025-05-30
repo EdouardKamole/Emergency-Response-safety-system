@@ -277,7 +277,7 @@ class _SosScreenState extends State<SosScreen>
           .set({
             'reportType': gridItems[selectedIndex]['label'],
             'description': notes,
-            'status': 'Pending', // Match HistoryScreen status format
+            'status': 'Pending',
             'createdAt': Timestamp.now(),
             'media': mediaUrls,
             'location': {
