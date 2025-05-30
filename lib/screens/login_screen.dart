@@ -1,14 +1,16 @@
+import 'package:emergency_app/screens/forgot_password.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:emergency_app/screens/home_screen.dart';
 import 'package:emergency_app/screens/signup_screen.dart';
+
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  const LoginScreen({super.key});
 
   @override
   _LoginScreenState createState() => _LoginScreenState();
@@ -138,6 +140,29 @@ class _LoginScreenState extends State<LoginScreen>
         _isLoading = false;
       });
     }
+  }
+
+  // Navigate to Forgot Password Screen
+  void _navigateToForgotPassword() {
+    Navigator.push(
+      context,
+      PageRouteBuilder(
+        pageBuilder:
+            (context, animation, secondaryAnimation) => ForgotPasswordScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          return SlideTransition(
+            position: Tween<Offset>(
+              begin: Offset(1.0, 0.0),
+              end: Offset.zero,
+            ).animate(
+              CurvedAnimation(parent: animation, curve: Curves.easeInOut),
+            ),
+            child: child,
+          );
+        },
+        transitionDuration: Duration(milliseconds: 300),
+      ),
+    );
   }
 
   String _getErrorMessage(String errorCode) {
@@ -384,13 +409,12 @@ class _LoginScreenState extends State<LoginScreen>
 
                             SizedBox(height: 16.h),
 
-                            // Forgot Password Link
+                            // Forgot Password Link - Updated with navigation
                             Align(
                               alignment: Alignment.centerRight,
                               child: GestureDetector(
-                                onTap: () {
-                                  // TODO: Implement forgot password functionality
-                                },
+                                onTap:
+                                    _navigateToForgotPassword, // Updated this line
                                 child: Container(
                                   padding: EdgeInsets.symmetric(
                                     vertical: 8.h,
