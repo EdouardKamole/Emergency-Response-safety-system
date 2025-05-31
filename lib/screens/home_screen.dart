@@ -127,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         return;
       }
 
-      // Get position (no timeout, consistent with original logic)
+      // Get position
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
@@ -139,7 +139,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       }
 
-      // Attempt reverse geocoding with timeout to avoid PlatformException
+      // Attempt reverse geocoding with timeout
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(
           position.latitude,
@@ -229,9 +229,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               (reportData['status'] == 'active' ||
                   reportData['status'] == 'dispatched');
         });
+      } else {
+        if (mounted) {
+          setState(() {
+            latestReport = null;
+            isEmergencyActive = false;
+          });
+        }
       }
     } catch (e) {
       print("Error fetching latest report: $e");
+      if (mounted) {
+        setState(() {
+          latestReport = null;
+          isEmergencyActive = false;
+        });
+      }
+    }
+  }
+
+  // Refresh function for pull-down-to-refresh
+  Future<void> _onRefresh() async {
+    try {
+      // Run all fetch operations concurrently
+      await Future.wait([
+        _fetchUserData(),
+        _fetchLatestReport(),
+        _getCurrentLocation(),
+      ]);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Data refreshed successfully")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Failed to refresh data: $e")));
+      }
+      print("Error during refresh: $e");
     }
   }
 
@@ -266,17 +303,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           colors: [Color(0xFF1565C0), Color(0xFF0D47A1), Color(0xFF001970)],
         ),
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          children: [
-            _buildEnhancedHeader(),
-            _buildEmergencyStatus(),
-            _buildQuickActions(),
-            SizedBox(height: 20.h),
-            _buildServiceCategories(),
-            _buildRecentActivity(),
-            SizedBox(height: 100.h),
-          ],
+      child: RefreshIndicator(
+        color: Colors.white,
+        backgroundColor: Color(0xFF1565C0),
+        onRefresh: _onRefresh,
+        child: SingleChildScrollView(
+          physics:
+              const AlwaysScrollableScrollPhysics(), // Ensure scrollable for refresh
+          child: Column(
+            children: [
+              _buildEnhancedHeader(),
+              _buildEmergencyStatus(),
+              _buildQuickActions(),
+              SizedBox(height: 20.h),
+              _buildServiceCategories(),
+              _buildRecentActivity(),
+              SizedBox(height: 100.h),
+            ],
+          ),
         ),
       ),
     );

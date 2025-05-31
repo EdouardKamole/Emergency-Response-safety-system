@@ -1,3 +1,4 @@
+import 'package:emergency_app/screens/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -203,7 +204,10 @@ class _ProfileScreenState extends State<ProfileScreen>
     try {
       await _auth.signOut();
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/login');
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => LoginScreen()),
+        );
       }
     } catch (e) {
       _showSnackBar('Error signing out: ${e.toString()}', isError: true);

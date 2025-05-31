@@ -28,12 +28,17 @@ class _HistoryScreenState extends State<HistoryScreen>
     _slideController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
-    )..forward();
-
+    );
     _fadeController = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
-    )..forward();
+    );
+
+    // Start animations only if widget is mounted
+    if (mounted) {
+      _slideController.forward();
+      _fadeController.forward();
+    }
   }
 
   @override
@@ -255,6 +260,7 @@ class _HistoryScreenState extends State<HistoryScreen>
           color: const Color(0xFF1565C0),
           onRefresh: () async {
             await Future.delayed(const Duration(milliseconds: 500));
+            if (mounted) setState(() {}); // Trigger rebuild
           },
           child: StreamBuilder<QuerySnapshot>(
             stream:
@@ -295,7 +301,13 @@ class _HistoryScreenState extends State<HistoryScreen>
                 padding: EdgeInsets.all(20.w),
                 itemCount: reports.length,
                 itemBuilder: (context, index) {
-                  return _buildPremiumReportCard(reports[index], index);
+                  // Delay animation for each item to prevent overload
+                  return FutureBuilder(
+                    future: Future.delayed(Duration(milliseconds: index * 100)),
+                    builder:
+                        (context, _) =>
+                            _buildPremiumReportCard(reports[index], index),
+                  );
                 },
               );
             },
@@ -305,11 +317,6 @@ class _HistoryScreenState extends State<HistoryScreen>
     );
   }
 
-  /// **MODIFIED CODE SEGMENT BELOW**
-  ///
-  /// This section has been updated to temporarily comment out
-  /// the navigation to `TrackRescuerScreen` for debugging.
-  ///
   Widget _buildPremiumReportCard(QueryDocumentSnapshot report, int index) {
     final data = report.data() as Map<String, dynamic>? ?? {};
     final reportType = data['reportType'] as String? ?? 'Emergency Report';
@@ -319,13 +326,17 @@ class _HistoryScreenState extends State<HistoryScreen>
     final createdAt = data['createdAt'] as Timestamp?;
     final formattedDate =
         createdAt != null
-            ? DateFormat('MMM dd, בכל • HH:mm').format(createdAt.toDate())
+            ? DateFormat('MMM dd, yyyy • HH:mm').format(createdAt.toDate())
             : 'Unknown date';
     final locationData = data['location'] as Map<String, dynamic>?;
     final location =
         locationData != null && locationData['address'] is String
             ? locationData['address'] as String
             : 'Location unavailable';
+
+    // Adjust interval to ensure end <= 1.0
+    double begin = (0.1 * index).clamp(0.0, 0.7);
+    double end = (begin + 0.3).clamp(0.0, 1.0);
 
     return SlideTransition(
       position: Tween<Offset>(
@@ -334,11 +345,7 @@ class _HistoryScreenState extends State<HistoryScreen>
       ).animate(
         CurvedAnimation(
           parent: _slideController,
-          curve: Interval(
-            0.1 * index,
-            0.1 * index + 0.9,
-            curve: Curves.easeOutCubic,
-          ),
+          curve: Interval(begin, end, curve: Curves.easeOutCubic),
         ),
       ),
       child: Container(
@@ -370,7 +377,6 @@ class _HistoryScreenState extends State<HistoryScreen>
           child: InkWell(
             borderRadius: BorderRadius.circular(20.r),
             onTap: () {
-              // --- START OF MODIFIED SECTION FOR DEBUGGING ---
               if (status.toLowerCase() == 'active') {
                 final latitude =
                     (locationData?['latitude'] as num?)?.toDouble();
@@ -378,20 +384,17 @@ class _HistoryScreenState extends State<HistoryScreen>
                     (locationData?['longitude'] as num?)?.toDouble();
 
                 if (latitude != null && longitude != null) {
-                  debugPrint(
-                    'Tapped active report: ${report.id}. Navigation to TrackRescuerScreen is TEMPORARILY DISABLED.',
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder:
+                          (context) => TrackRescuerScreen(
+                            reportId: report.id,
+                            emergencyLat: latitude,
+                            emergencyLon: longitude,
+                          ),
+                    ),
                   );
-                  // // ORIGINAL CODE (COMMENTED OUT FOR TESTING)
-                  // Navigator.push(
-                  //   context,
-                  //   MaterialPageRoute(
-                  //     builder: (context) => TrackRescuerScreen(
-                  //       reportId: report.id,
-                  //       emergencyLat: latitude,
-                  //       emergencyLon: longitude,
-                  //     ),
-                  //   ),
-                  // );
                 } else {
                   debugPrint(
                     'Active report tapped, but missing location data for tracking: ${report.id}',
@@ -399,10 +402,9 @@ class _HistoryScreenState extends State<HistoryScreen>
                 }
               } else {
                 debugPrint(
-                  'Tapped ${status} report: ${report.id}. No tracking available for this status.',
+                  'Tapped $status report: ${report.id}. No tracking available for this status.',
                 );
               }
-              // --- END OF MODIFIED SECTION FOR DEBUGGING ---
             },
             child: Padding(
               padding: EdgeInsets.all(20.w),

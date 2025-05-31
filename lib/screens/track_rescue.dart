@@ -41,6 +41,7 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
   final MapController _mapController = MapController();
   bool _isLoading = true;
   String? _errorMessage;
+  bool _isRescuerAssigned = false; // Flag to track rescuer assignment
 
   // OpenRouteService API key (replace with your key)
   static const String _orsApiKey =
@@ -115,6 +116,10 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
           (event) async {
             final data = event.snapshot.value as Map<dynamic, dynamic>?;
             if (data != null && data.isNotEmpty && mounted) {
+              setState(() {
+                _isRescuerAssigned = true; // Rescuer is assigned
+                _isLoading = false;
+              });
               final rescuerId = data.keys.first;
               final rescuerData = Map<String, dynamic>.from(data[rescuerId]);
               final double? latitude = rescuerData['latitude']?.toDouble();
@@ -144,30 +149,26 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
                   _statusStep.value = 3; // Arrived at Hospital
                 }
 
-                if (_isLoading) {
-                  setState(() {
-                    _isLoading = false;
-                  });
-                }
-
                 print('Rescuer updated: ($latitude, $longitude), ETA: $eta');
               } else {
                 setState(() {
-                  _isLoading = false;
                   _errorMessage = "Invalid rescuer location data";
                 });
               }
             } else {
               setState(() {
                 _isLoading = false;
-                _errorMessage = "No rescuer data found";
+                _isRescuerAssigned = false; // No rescuer assigned
+                _errorMessage = "Waiting for rescuer to be assigned";
               });
+              print('No rescuer data found');
             }
           },
           onError: (error) {
             if (mounted) {
               setState(() {
                 _isLoading = false;
+                _isRescuerAssigned = false;
                 _errorMessage = "Error fetching rescuer data: $error";
               });
             }
@@ -177,9 +178,9 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
 
   Future<void> _fetchRoutePoints() async {
     final rescuerLoc = _rescuerLocation.value;
-    if (rescuerLoc == null) {
-      print('Rescuer location is null');
-      _routePoints.value = [];
+    if (rescuerLoc == null || !_isRescuerAssigned) {
+      print('Rescuer location is null or no rescuer assigned');
+      _routePoints.value = []; // Clear route points if no rescuer
       return;
     }
 
@@ -204,13 +205,11 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
         );
       } else {
         print('Failed to fetch route: ${response.statusCode}');
-        // Fallback to straight line
-        _routePoints.value = [rescuerLoc, _emergencyLocation];
+        _routePoints.value = []; // Clear route points on failure
       }
     } catch (e) {
       print('Error fetching route: $e');
-      // Fallback to straight line
-      _routePoints.value = [rescuerLoc, _emergencyLocation];
+      _routePoints.value = []; // Clear route points on error
     }
   }
 
@@ -304,22 +303,11 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
                           routePoints.take(visiblePoints).toList();
                       return PolylineLayer(
                         polylines: [
-                          if (visibleRoute.length >= 2)
+                          if (visibleRoute.length >= 2 && _isRescuerAssigned)
                             Polyline(
                               points: visibleRoute,
                               color: Colors.redAccent.withOpacity(0.8),
                               strokeWidth: 4.0,
-                            ),
-                          // Fallback polyline
-                          if (visibleRoute.length < 2 &&
-                              _rescuerLocation.value != null)
-                            Polyline(
-                              points: [
-                                _rescuerLocation.value!,
-                                _emergencyLocation,
-                              ],
-                              color: Colors.blue.withOpacity(0.5),
-                              strokeWidth: 2.0,
                             ),
                         ],
                       );
@@ -343,7 +331,7 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
                           isPulsing: true,
                         ),
                       ),
-                      if (rescuerLoc != null)
+                      if (rescuerLoc != null && _isRescuerAssigned)
                         Marker(
                           width: 45.0,
                           height: 45.0,
@@ -507,7 +495,12 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
                         _errorMessage!,
                         style: GoogleFonts.poppins(
                           fontSize: 14,
-                          color: Colors.red,
+                          color:
+                              _errorMessage ==
+                                      "Waiting for rescuer to be assigned"
+                                  ? Colors
+                                      .orange // Orange for waiting message
+                                  : Colors.red, // Red for other errors
                         ),
                         textAlign: TextAlign.center,
                       ),

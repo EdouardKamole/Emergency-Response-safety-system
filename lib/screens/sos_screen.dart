@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:emergency_app/screens/track_rescue.dart';
+import 'package:emergency_app/screens/track_rescue.dart'; // Adjust path as needed
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -11,7 +11,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 class SosScreen extends StatefulWidget {
   final int? selectedIndex;
@@ -60,13 +61,21 @@ class _SosScreenState extends State<SosScreen>
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
+  // Cloudinary configuration
+  final String cloudName = 'dsojq0cm2';
+  final String uploadPreset = 'ml_default';
+
   @override
   void initState() {
     super.initState();
     if (widget.selectedIndex != null) {
       selectedIndex = widget.selectedIndex!;
     }
-    _requestLocationPermission();
+
+    // Request all necessary permissions when the screen is mounted
+    if (mounted) {
+      _requestNecessaryPermissions();
+    }
 
     _animationController = AnimationController(
       vsync: this,
@@ -94,41 +103,70 @@ class _SosScreenState extends State<SosScreen>
     super.dispose();
   }
 
-  Future<void> _requestLocationPermission() async {
-    var status = await Permission.location.status;
-    if (status.isDenied) {
+  Future<void> _requestNecessaryPermissions() async {
+    if (!mounted) return;
+
+    // Request Location Permission
+    var locationStatus = await Permission.location.status;
+    if (locationStatus.isDenied) {
       if (await Permission.location.request().isGranted) {
         await _getCurrentLocation();
       } else {
-        if (mounted) {
-          setState(() {
-            currentLocation = "Location permission denied";
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Please grant location permission")),
-          );
-        }
-      }
-    } else if (status.isGranted) {
-      await _getCurrentLocation();
-    } else if (status.isPermanentlyDenied) {
-      if (mounted) {
         setState(() {
-          currentLocation = "Location permission permanently denied";
+          currentLocation = "Location permission denied";
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Please enable location in app settings"),
-          ),
+          const SnackBar(content: Text("Please grant location permission")),
         );
       }
+    } else if (locationStatus.isGranted) {
+      await _getCurrentLocation();
+    } else if (locationStatus.isPermanentlyDenied) {
+      setState(() {
+        currentLocation = "Location permission permanently denied";
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enable location in app settings")),
+      );
+      await openAppSettings();
+    }
+
+    // Request Camera Permission
+    var cameraStatus = await Permission.camera.status;
+    if (cameraStatus.isDenied) {
+      if (await Permission.camera.request().isDenied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Camera permission denied")),
+        );
+      }
+    } else if (cameraStatus.isPermanentlyDenied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enable camera in app settings")),
+      );
+      await openAppSettings();
+    }
+
+    // Request Storage Permission
+    var storageStatus =
+        await Permission.photos.status; // Updated for modern Android
+    if (storageStatus.isDenied) {
+      if (await Permission.photos.request().isDenied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Photo access permission denied")),
+        );
+      }
+    } else if (storageStatus.isPermanentlyDenied) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please enable photo access in app settings"),
+        ),
+      );
       await openAppSettings();
     }
   }
 
   Future<void> _getCurrentLocation() async {
     try {
-      // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted) {
@@ -142,7 +180,6 @@ class _SosScreenState extends State<SosScreen>
         return;
       }
 
-      // Get position with timeout
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
@@ -158,7 +195,6 @@ class _SosScreenState extends State<SosScreen>
         });
       }
 
-      // Attempt reverse geocoding with timeout
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(
           position.latitude,
@@ -219,6 +255,7 @@ class _SosScreenState extends State<SosScreen>
   Future<void> _pickMedia(ImageSource source, {bool isVideo = false}) async {
     final ImagePicker picker = ImagePicker();
 
+    // Re-check permissions before picking media
     if (source == ImageSource.camera) {
       var cameraStatus = await Permission.camera.status;
       if (!cameraStatus.isGranted) {
@@ -233,13 +270,13 @@ class _SosScreenState extends State<SosScreen>
         }
       }
     } else {
-      var storageStatus = await Permission.storage.status;
+      var storageStatus = await Permission.photos.status;
       if (!storageStatus.isGranted) {
-        storageStatus = await Permission.storage.request();
+        storageStatus = await Permission.photos.request();
         if (!storageStatus.isGranted) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Storage permission denied")),
+              const SnackBar(content: Text("Photo access permission denied")),
             );
           }
           return;
@@ -327,17 +364,55 @@ class _SosScreenState extends State<SosScreen>
     }
 
     try {
-      // Upload media to Firebase Storage
-      final storage = FirebaseStorage.instance;
+      // Upload media to Cloudinary
       final mediaUrls = <String>[];
       for (final media in mediaItems) {
         final file = media['file'] as File;
-        final storageRef = storage.ref().child(
-          'reports/${user.uid}/${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}',
-        );
-        await storageRef.putFile(file);
-        final url = await storageRef.getDownloadURL();
-        mediaUrls.add(url);
+        try {
+          var request =
+              http.MultipartRequest(
+                  'POST',
+                  Uri.parse(
+                    'https://api.cloudinary.com/v1_1/$cloudName/upload',
+                  ),
+                )
+                ..fields['upload_preset'] = uploadPreset
+                ..files.add(
+                  await http.MultipartFile.fromPath('file', file.path),
+                );
+
+          var response = await request.send();
+          var responseBody = await response.stream.bytesToString();
+          var data = json.decode(responseBody);
+
+          if (response.statusCode == 200) {
+            mediaUrls.add(data['secure_url']);
+          } else {
+            print('Cloudinary upload error: ${data['error']['message']}');
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                backgroundColor: Colors.red,
+                content: Text(
+                  'Failed to upload media: ${data['error']['message']}',
+                  style: GoogleFonts.poppins(fontSize: 15.sp),
+                ),
+              ),
+            );
+            return;
+          }
+        } catch (e) {
+          print('Cloudinary upload exception: $e');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: Colors.red,
+              content: Text(
+                'Failed to upload media. Please try again.',
+                style: GoogleFonts.poppins(fontSize: 15.sp),
+              ),
+            ),
+          );
+          return;
+        }
       }
 
       // Save report to Realtime Database
@@ -354,7 +429,7 @@ class _SosScreenState extends State<SosScreen>
         'status': 'reported',
         'type': gridItems[selectedIndex]['label'],
         'notes': notes,
-        'assignedRescuer': {}, // Initially empty
+        'assignedRescuer': {},
       });
 
       // Save report to Firestore
@@ -363,9 +438,7 @@ class _SosScreenState extends State<SosScreen>
           .collection('users')
           .doc(user.uid)
           .collection('emergencyReports')
-          .doc(
-            reportRef.key,
-          ) // Use same ID as Realtime Database for consistency
+          .doc(reportRef.key)
           .set({
             'reportType': gridItems[selectedIndex]['label'],
             'description': notes,
@@ -378,36 +451,6 @@ class _SosScreenState extends State<SosScreen>
               'address': currentLocation,
             },
           }, SetOptions(merge: true));
-
-      // Insert fake rescuer data
-      const fakeRescuerId = 'fake_rescuer_001';
-      final fakeRescuerLocation = {
-        'latitude': _currentPosition!.latitude + 0.01,
-        'longitude': _currentPosition!.longitude + 0.01,
-        'timestamp': DateTime.now().toIso8601String(),
-        'eta': 300, // Fake ETA: 5 minutes in seconds
-      };
-
-      // Add fake rescuer to assignedRescuer in Realtime Database
-      await reportRef
-          .child('assignedRescuer/$fakeRescuerId')
-          .set(fakeRescuerLocation);
-
-      // Add fake rescuer to activeRescuers in Realtime Database
-      await database.child('activeRescuers/$fakeRescuerId').set({
-        'latitude': fakeRescuerLocation['latitude'],
-        'longitude': fakeRescuerLocation['longitude'],
-        'timestamp': fakeRescuerLocation['timestamp'],
-        'status': 'en_route',
-      });
-
-      // Start simulating rescuer movement
-      _simulateRescuerUpdates(
-        reportId: reportRef.key!,
-        rescuerId: fakeRescuerId,
-        emergencyLat: _currentPosition!.latitude,
-        emergencyLon: _currentPosition!.longitude,
-      );
 
       // Show confirmation
       if (mounted) {
@@ -437,69 +480,6 @@ class _SosScreenState extends State<SosScreen>
         );
       }
     }
-  }
-
-  // Simulate rescuer moving toward the emergency location
-  void _simulateRescuerUpdates({
-    required String reportId,
-    required String rescuerId,
-    required double emergencyLat,
-    required double emergencyLon,
-  }) {
-    double currentLat = emergencyLat + 0.01; // Starting position
-    double currentLon = emergencyLon + 0.01;
-    const step = 0.001; // Move 0.001 degrees (~100m) per update
-    const interval = Duration(seconds: 5); // Update every 5 seconds
-
-    Timer.periodic(interval, (timer) async {
-      // Calculate distance to emergency
-      double distance = Geolocator.distanceBetween(
-        currentLat,
-        currentLon,
-        emergencyLat,
-        emergencyLon,
-      );
-
-      // Stop if close to emergency (within 100 meters)
-      if (distance < 100) {
-        timer.cancel();
-        return;
-      }
-
-      // Move toward emergency
-      if (currentLat > emergencyLat) {
-        currentLat -= step;
-      } else if (currentLat < emergencyLat) {
-        currentLat += step;
-      }
-      if (currentLon > emergencyLon) {
-        currentLon -= step;
-      } else if (currentLon < emergencyLon) {
-        currentLon += step;
-      }
-
-      // Calculate fake ETA based on distance (assuming 10 meters/second speed)
-      int etaSeconds = (distance / 10).round();
-
-      final database = FirebaseDatabase.instance.ref();
-      final updateData = {
-        'latitude': currentLat,
-        'longitude': currentLon,
-        'timestamp': DateTime.now().toIso8601String(),
-        'eta': etaSeconds,
-      };
-
-      // Update assignedRescuer
-      await database
-          .child('reports/$reportId/assignedRescuer/$rescuerId')
-          .update(updateData);
-
-      // Update activeRescuers
-      await database.child('activeRescuers/$rescuerId').update({
-        ...updateData,
-        'status': 'en_route',
-      });
-    });
   }
 
   @override
@@ -1037,56 +1017,54 @@ class _SosScreenState extends State<SosScreen>
     IconData icon, {
     bool isOptional = false,
   }) {
-    return Container(
-      child: Row(
-        children: [
+    return Row(
+      children: [
+        Container(
+          padding: EdgeInsets.all(8.w),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.blue.shade500, Colors.blue.shade700],
+            ),
+            borderRadius: BorderRadius.circular(10.r),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.blue.shade200.withOpacity(0.5),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(icon, color: Colors.white, size: 16.sp),
+        ),
+        SizedBox(width: 12.w),
+        Text(
+          title,
+          style: GoogleFonts.poppins(
+            fontSize: 16.sp,
+            fontWeight: FontWeight.w700,
+            color: Colors.black87,
+          ),
+        ),
+        if (isOptional) ...[
+          SizedBox(width: 8.w),
           Container(
-            padding: EdgeInsets.all(8.w),
+            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.blue.shade500, Colors.blue.shade700],
-              ),
-              borderRadius: BorderRadius.circular(10.r),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.shade200.withOpacity(0.5),
-                  blurRadius: 8,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+              color: Colors.green.shade100,
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(color: Colors.green.shade300, width: 1),
             ),
-            child: Icon(icon, color: Colors.white, size: 16.sp),
-          ),
-          SizedBox(width: 12.w),
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              fontSize: 16.sp,
-              fontWeight: FontWeight.w700,
-              color: Colors.black87,
+            child: Text(
+              "Optional",
+              style: GoogleFonts.poppins(
+                fontSize: 10.sp,
+                fontWeight: FontWeight.w500,
+                color: Colors.green.shade700,
+              ),
             ),
           ),
-          if (isOptional) ...[
-            SizedBox(width: 8.w),
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
-              decoration: BoxDecoration(
-                color: Colors.green.shade100,
-                borderRadius: BorderRadius.circular(12.r),
-                border: Border.all(color: Colors.green.shade300, width: 1),
-              ),
-              child: Text(
-                "Optional",
-                style: GoogleFonts.poppins(
-                  fontSize: 10.sp,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.green.shade700,
-                ),
-              ),
-            ),
-          ],
         ],
-      ),
+      ],
     );
   }
 
@@ -1156,45 +1134,43 @@ class _SosScreenState extends State<SosScreen>
             SizedBox(height: 20.h),
 
             // Media Preview Grid
-            Container(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.attachment_rounded,
-                        color: Colors.blue.shade600,
-                        size: 18.sp,
-                      ),
-                      SizedBox(width: 8.w),
-                      Text(
-                        "Attached Media (${mediaItems.length})",
-                        style: GoogleFonts.poppins(
-                          fontSize: 14.sp,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blue.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 12.h),
-                  GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 12.w,
-                      mainAxisSpacing: 12.h,
-                      childAspectRatio: 1,
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.attachment_rounded,
+                      color: Colors.blue.shade600,
+                      size: 18.sp,
                     ),
-                    itemCount: mediaItems.length,
-                    itemBuilder: (context, index) {
-                      return _buildMediaPreview(index);
-                    },
+                    SizedBox(width: 8.w),
+                    Text(
+                      "Attached Media (${mediaItems.length})",
+                      style: GoogleFonts.poppins(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.blue.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 12.h),
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 12.w,
+                    mainAxisSpacing: 12.h,
+                    childAspectRatio: 1,
                   ),
-                ],
-              ),
+                  itemCount: mediaItems.length,
+                  itemBuilder: (context, index) {
+                    return _buildMediaPreview(index);
+                  },
+                ),
+              ],
             ),
           ] else ...[
             SizedBox(height: 20.h),
@@ -1291,8 +1267,8 @@ class _SosScreenState extends State<SosScreen>
                   label,
                   style: GoogleFonts.poppins(
                     fontSize: 12.sp,
-                    fontWeight: FontWeight.w600,
                     color: Colors.white,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],
@@ -1403,7 +1379,10 @@ class _SosScreenState extends State<SosScreen>
                   borderRadius: BorderRadius.circular(20.r),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.red.shade200,
+                      color:
+                          Colors
+                              .red
+                              .shade200, // Fixed typo: Colors.red区别 to Colors.red.shade200
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -1423,12 +1402,12 @@ class _SosScreenState extends State<SosScreen>
   }
 
   void _showLocationDrawer(BuildContext context) {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder:
-          (context) => Container(
+          (BuildContext context) => Container(
             height: MediaQuery.of(context).size.height * 0.7,
             decoration: BoxDecoration(
               color: Colors.white,
@@ -1512,8 +1491,8 @@ class _SosScreenState extends State<SosScreen>
                           ),
                           child: Icon(
                             Icons.close_rounded,
-                            size: 20.sp,
                             color: Colors.grey.shade600,
+                            size: 20.sp,
                           ),
                         ),
                       ),
@@ -1597,7 +1576,7 @@ class _SosScreenState extends State<SosScreen>
                       _buildLocationActionButton(
                         icon: Icons.settings_rounded,
                         title: "Location Settings",
-                        subtitle: "Open device location settings",
+                        subtitle: "Open device settings",
                         color: Colors.orange,
                         onTap: () {
                           Navigator.pop(context);
