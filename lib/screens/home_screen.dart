@@ -1,3 +1,4 @@
+import 'dart:async'; // Added for TimeoutException
 import 'package:emergency_app/screens/history_screen.dart';
 import 'package:emergency_app/screens/profile_screen.dart';
 import 'package:flutter/material.dart';
@@ -26,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   String userName = "";
   bool isEmergencyActive = false;
   String currentLocation = "Fetching location..."; // Initial state for location
+  Position? _currentPosition; // Added to store position
 
   @override
   void initState() {
@@ -78,66 +80,119 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     var status = await Permission.location.status;
     if (status.isDenied) {
       if (await Permission.location.request().isGranted) {
-        _getCurrentLocation();
+        await _getCurrentLocation();
       } else {
         if (mounted) {
           setState(() {
             currentLocation = "Location permission denied";
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Please grant location permission")),
+          );
         }
         print('Location permission denied');
       }
     } else if (status.isGranted) {
-      _getCurrentLocation();
+      await _getCurrentLocation();
     } else if (status.isPermanentlyDenied) {
       if (mounted) {
         setState(() {
           currentLocation = "Location permission permanently denied";
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Please enable location in app settings"),
+          ),
+        );
       }
       print('Location permission permanently denied');
-      openAppSettings(); // Prompt user to enable in settings
+      await openAppSettings(); // Prompt user to enable in settings
     }
   }
 
   // Fetch current location
   Future<void> _getCurrentLocation() async {
     try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() {
+            currentLocation = "Location services are disabled";
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Please enable location services")),
+          );
+        }
+        return;
+      }
+
+      // Get position (no timeout, consistent with original logic)
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+          currentLocation =
+              "Lat: ${position.latitude}, Lon: ${position.longitude}";
+        });
+      }
 
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
+      // Attempt reverse geocoding with timeout to avoid PlatformException
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        ).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            throw TimeoutException("Geocoding timed out");
+          },
+        );
+
+        if (placemarks.isNotEmpty && mounted) {
+          Placemark place = placemarks[0];
+          String address =
+              "${place.name ?? ''}, ${place.locality ?? ''}, ${place.administrativeArea ?? ''}"
+                  .trim()
+                  .replaceAll(RegExp(r',\s*,'), ',')
+                  .replaceAll(RegExp(r'^\s*,'), '')
+                  .replaceAll(RegExp(r',\s*$'), '');
+          setState(() {
+            currentLocation =
+                address.isNotEmpty
+                    ? address
+                    : "Location found, but address unavailable (${position.latitude}, ${position.longitude})";
+          });
+        } else {
+          if (mounted) {
+            setState(() {
+              currentLocation =
+                  "No address found for these coordinates (${position.latitude}, ${position.longitude})";
+            });
+          }
+        }
+      } catch (e) {
         if (mounted) {
           setState(() {
             currentLocation =
-                "${place.name ?? ''}, ${place.locality ?? ''}, ${place.administrativeArea ?? ''}"
-                    .trim()
-                    .replaceAll(RegExp(r',\s*,'), ',')
-                    .replaceAll(RegExp(r'^\s*,'), '')
-                    .replaceAll(RegExp(r',\s*$'), '');
-            if (currentLocation.isEmpty) {
-              currentLocation = "Location found, but address unavailable";
-            }
+                "No address found for these coordinates (${position.latitude}, ${position.longitude})";
           });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Unable to get address: $e")));
         }
-      } else {
-        if (mounted) {
-          setState(() {
-            currentLocation = "No address found for these coordinates";
-          });
-        }
+        print("Geocoding error: $e");
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          currentLocation = "Error fetching location: ${e.toString()}";
+          currentLocation = "Error fetching location: $e";
         });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Location error: $e")));
       }
       print("Error fetching location: $e");
     }

@@ -1,3 +1,4 @@
+import 'package:emergency_app/screens/track_rescue.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -25,12 +26,12 @@ class _HistoryScreenState extends State<HistoryScreen>
   void initState() {
     super.initState();
     _slideController = AnimationController(
-      duration: Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     )..forward();
 
     _fadeController = AnimationController(
-      duration: Duration(milliseconds: 600),
+      duration: const Duration(milliseconds: 600),
       vsync: this,
     )..forward();
   }
@@ -45,14 +46,14 @@ class _HistoryScreenState extends State<HistoryScreen>
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'resolved':
-        return Color(0xFF4CAF50);
+        return const Color(0xFF4CAF50);
       case 'pending':
-        return Color(0xFFFF9800);
+        return const Color(0xFFFF9800);
       case 'active':
       case 'dispatched':
-        return Color(0xFF2196F3);
+        return const Color(0xFF2196F3);
       default:
-        return Color(0xFFF44336);
+        return const Color(0xFFF44336);
     }
   }
 
@@ -77,7 +78,7 @@ class _HistoryScreenState extends State<HistoryScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
@@ -99,7 +100,10 @@ class _HistoryScreenState extends State<HistoryScreen>
 
   Widget _buildPremiumHeader() {
     return SlideTransition(
-      position: Tween<Offset>(begin: Offset(0, -1), end: Offset.zero).animate(
+      position: Tween<Offset>(
+        begin: const Offset(0, -1),
+        end: Offset.zero,
+      ).animate(
         CurvedAnimation(parent: _slideController, curve: Curves.easeOutBack),
       ),
       child: Container(
@@ -169,12 +173,14 @@ class _HistoryScreenState extends State<HistoryScreen>
 
             return GestureDetector(
               onTap: () {
-                setState(() {
-                  selectedFilter = option;
-                });
+                if (mounted) {
+                  setState(() {
+                    selectedFilter = option;
+                  });
+                }
               },
               child: AnimatedContainer(
-                duration: Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 300),
                 margin: EdgeInsets.only(right: 12.w),
                 padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
                 decoration: BoxDecoration(
@@ -201,7 +207,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                             BoxShadow(
                               color: Colors.white.withOpacity(0.3),
                               blurRadius: 10,
-                              offset: Offset(0, 4),
+                              offset: const Offset(0, 4),
                             ),
                           ]
                           : null,
@@ -211,7 +217,8 @@ class _HistoryScreenState extends State<HistoryScreen>
                     option,
                     style: GoogleFonts.poppins(
                       fontSize: 14.sp,
-                      color: isSelected ? Color(0xFF1565C0) : Colors.white,
+                      color:
+                          isSelected ? const Color(0xFF1565C0) : Colors.white,
                       fontWeight:
                           isSelected ? FontWeight.w600 : FontWeight.w500,
                     ),
@@ -226,6 +233,10 @@ class _HistoryScreenState extends State<HistoryScreen>
   }
 
   Widget _buildHistoryContent() {
+    if (_auth.currentUser == null) {
+      return _buildErrorState('User not authenticated. Please sign in.');
+    }
+
     return Container(
       margin: EdgeInsets.only(top: 20.h),
       decoration: BoxDecoration(
@@ -240,71 +251,87 @@ class _HistoryScreenState extends State<HistoryScreen>
           topLeft: Radius.circular(30.r),
           topRight: Radius.circular(30.r),
         ),
-        child: StreamBuilder<QuerySnapshot>(
-          stream:
-              _auth.currentUser != null
-                  ? _firestore
-                      .collection('users')
-                      .doc(_auth.currentUser!.uid)
-                      .collection('emergencyReports')
-                      .orderBy('createdAt', descending: true)
-                      .snapshots()
-                  : null,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return _buildLoadingState();
-            }
-            if (snapshot.hasError) {
-              return _buildErrorState(snapshot.error.toString());
-            }
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return _buildEmptyState();
-            }
-
-            var reports = snapshot.data!.docs;
-
-            // Filter reports based on selected filter
-            if (selectedFilter != 'All') {
-              reports =
-                  reports.where((report) {
-                    final status = report['status'] ?? 'Unknown';
-                    return status.toLowerCase() == selectedFilter.toLowerCase();
-                  }).toList();
-            }
-
-            if (reports.isEmpty) {
-              return _buildEmptyFilterState();
-            }
-
-            return ListView.builder(
-              padding: EdgeInsets.all(20.w),
-              itemCount: reports.length,
-              itemBuilder: (context, index) {
-                return _buildPremiumReportCard(reports[index], index);
-              },
-            );
+        child: RefreshIndicator(
+          color: const Color(0xFF1565C0),
+          onRefresh: () async {
+            await Future.delayed(const Duration(milliseconds: 500));
           },
+          child: StreamBuilder<QuerySnapshot>(
+            stream:
+                _firestore
+                    .collection('users')
+                    .doc(_auth.currentUser!.uid)
+                    .collection('emergencyReports')
+                    .orderBy('createdAt', descending: true)
+                    .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return _buildLoadingState();
+              }
+              if (snapshot.hasError) {
+                debugPrint('Firestore error: ${snapshot.error}');
+                return _buildErrorState(snapshot.error.toString());
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return _buildEmptyState();
+              }
+
+              var reports = snapshot.data!.docs;
+
+              if (selectedFilter != 'All') {
+                reports =
+                    reports.where((report) {
+                      final status = report['status'] as String? ?? 'Unknown';
+                      return status.toLowerCase() ==
+                          selectedFilter.toLowerCase();
+                    }).toList();
+              }
+
+              if (reports.isEmpty) {
+                return _buildEmptyFilterState();
+              }
+
+              return ListView.builder(
+                padding: EdgeInsets.all(20.w),
+                itemCount: reports.length,
+                itemBuilder: (context, index) {
+                  return _buildPremiumReportCard(reports[index], index);
+                },
+              );
+            },
+          ),
         ),
       ),
     );
   }
 
+  /// **MODIFIED CODE SEGMENT BELOW**
+  ///
+  /// This section has been updated to temporarily comment out
+  /// the navigation to `TrackRescuerScreen` for debugging.
+  ///
   Widget _buildPremiumReportCard(QueryDocumentSnapshot report, int index) {
-    final reportType = report['reportType'] ?? 'Emergency Report';
-    final description = report['description'] ?? 'No description available';
-    final status = report['status'] ?? 'Unknown';
-    final createdAt = (report['createdAt'] as Timestamp?)?.toDate();
+    final data = report.data() as Map<String, dynamic>? ?? {};
+    final reportType = data['reportType'] as String? ?? 'Emergency Report';
+    final description =
+        data['description'] as String? ?? 'No description available';
+    final status = data['status'] as String? ?? 'Unknown';
+    final createdAt = data['createdAt'] as Timestamp?;
     final formattedDate =
         createdAt != null
-            ? DateFormat('MMM dd, yyyy • HH:mm').format(createdAt)
+            ? DateFormat('MMM dd, בכל • HH:mm').format(createdAt.toDate())
             : 'Unknown date';
+    final locationData = data['location'] as Map<String, dynamic>?;
     final location =
-        report['location'] != null
-            ? (report['location'] as Map)['address'] ?? 'Location unavailable'
+        locationData != null && locationData['address'] is String
+            ? locationData['address'] as String
             : 'Location unavailable';
 
     return SlideTransition(
-      position: Tween<Offset>(begin: Offset(1, 0), end: Offset.zero).animate(
+      position: Tween<Offset>(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(
         CurvedAnimation(
           parent: _slideController,
           curve: Interval(
@@ -327,13 +354,13 @@ class _HistoryScreenState extends State<HistoryScreen>
             BoxShadow(
               color: Colors.black.withOpacity(0.08),
               blurRadius: 20,
-              offset: Offset(0, 8),
+              offset: const Offset(0, 8),
               spreadRadius: 0,
             ),
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
               blurRadius: 6,
-              offset: Offset(0, 2),
+              offset: const Offset(0, 2),
               spreadRadius: 0,
             ),
           ],
@@ -343,7 +370,39 @@ class _HistoryScreenState extends State<HistoryScreen>
           child: InkWell(
             borderRadius: BorderRadius.circular(20.r),
             onTap: () {
-              // Add navigation to report details if needed
+              // --- START OF MODIFIED SECTION FOR DEBUGGING ---
+              if (status.toLowerCase() == 'active') {
+                final latitude =
+                    (locationData?['latitude'] as num?)?.toDouble();
+                final longitude =
+                    (locationData?['longitude'] as num?)?.toDouble();
+
+                if (latitude != null && longitude != null) {
+                  debugPrint(
+                    'Tapped active report: ${report.id}. Navigation to TrackRescuerScreen is TEMPORARILY DISABLED.',
+                  );
+                  // // ORIGINAL CODE (COMMENTED OUT FOR TESTING)
+                  // Navigator.push(
+                  //   context,
+                  //   MaterialPageRoute(
+                  //     builder: (context) => TrackRescuerScreen(
+                  //       reportId: report.id,
+                  //       emergencyLat: latitude,
+                  //       emergencyLon: longitude,
+                  //     ),
+                  //   ),
+                  // );
+                } else {
+                  debugPrint(
+                    'Active report tapped, but missing location data for tracking: ${report.id}',
+                  );
+                }
+              } else {
+                debugPrint(
+                  'Tapped ${status} report: ${report.id}. No tracking available for this status.',
+                );
+              }
+              // --- END OF MODIFIED SECTION FOR DEBUGGING ---
             },
             child: Padding(
               padding: EdgeInsets.all(20.w),
@@ -414,7 +473,7 @@ class _HistoryScreenState extends State<HistoryScreen>
                             BoxShadow(
                               color: _getStatusColor(status).withOpacity(0.3),
                               blurRadius: 8,
-                              offset: Offset(0, 2),
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
@@ -521,14 +580,14 @@ class _HistoryScreenState extends State<HistoryScreen>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Color(0xFF1565C0).withOpacity(0.1),
-                  Color(0xFF1565C0).withOpacity(0.05),
+                  const Color(0xFF1565C0).withOpacity(0.1),
+                  const Color(0xFF1565C0).withOpacity(0.05),
                 ],
               ),
               shape: BoxShape.circle,
             ),
             child: CircularProgressIndicator(
-              color: Color(0xFF1565C0),
+              color: const Color(0xFF1565C0),
               strokeWidth: 3.w,
             ),
           ),
@@ -580,7 +639,7 @@ class _HistoryScreenState extends State<HistoryScreen>
           ),
           SizedBox(height: 8.h),
           Text(
-            'Please check your connection and try again',
+            error,
             style: GoogleFonts.poppins(
               fontSize: 14.sp,
               color: Colors.grey.shade600,
@@ -603,8 +662,8 @@ class _HistoryScreenState extends State<HistoryScreen>
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  Color(0xFF1565C0).withOpacity(0.1),
-                  Color(0xFF1565C0).withOpacity(0.05),
+                  const Color(0xFF1565C0).withOpacity(0.1),
+                  const Color(0xFF1565C0).withOpacity(0.05),
                 ],
               ),
               shape: BoxShape.circle,
@@ -612,7 +671,7 @@ class _HistoryScreenState extends State<HistoryScreen>
             child: Icon(
               Icons.history_toggle_off,
               size: 48.sp,
-              color: Color(0xFF1565C0),
+              color: const Color(0xFF1565C0),
             ),
           ),
           SizedBox(height: 24.h),

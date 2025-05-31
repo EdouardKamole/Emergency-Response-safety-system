@@ -25,7 +25,7 @@ class SosScreen extends StatefulWidget {
 class _SosScreenState extends State<SosScreen>
     with SingleTickerProviderStateMixin {
   int selectedIndex = -1;
-  String currentLocation = "Fetching Location...";
+  String currentLocation = "Fetching location...";
   String notes = "";
   Position? _currentPosition;
   List<Map<String, dynamic>> gridItems = [
@@ -98,57 +98,120 @@ class _SosScreenState extends State<SosScreen>
     var status = await Permission.location.status;
     if (status.isDenied) {
       if (await Permission.location.request().isGranted) {
-        _getCurrentLocation();
+        await _getCurrentLocation();
       } else {
         if (mounted) {
           setState(() {
             currentLocation = "Location permission denied";
           });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Please grant location permission")),
+          );
         }
       }
     } else if (status.isGranted) {
-      _getCurrentLocation();
+      await _getCurrentLocation();
     } else if (status.isPermanentlyDenied) {
       if (mounted) {
         setState(() {
           currentLocation = "Location permission permanently denied";
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Please enable location in app settings"),
+          ),
+        );
       }
-      openAppSettings();
+      await openAppSettings();
     }
   }
 
   Future<void> _getCurrentLocation() async {
     try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        if (mounted) {
+          setState(() {
+            currentLocation = "Location services are disabled";
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text("Please enable location services")),
+          );
+        }
+        return;
+      }
+
+      // Get position with timeout
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-      );
-      _currentPosition = position;
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+        timeLimit: const Duration(seconds: 10),
+      ).catchError((e) {
+        throw Exception("Failed to get location: $e");
+      });
 
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
+      if (mounted) {
+        setState(() {
+          _currentPosition = position;
+          currentLocation =
+              "Lat: ${position.latitude}, Lon: ${position.longitude}";
+        });
+      }
+
+      // Attempt reverse geocoding with timeout
+      try {
+        List<Placemark> placemarks = await placemarkFromCoordinates(
+          position.latitude,
+          position.longitude,
+        ).timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            throw TimeoutException("Geocoding timed out");
+          },
+        );
+
+        if (placemarks.isNotEmpty && mounted) {
+          Placemark place = placemarks[0];
+          String address =
+              [
+                place.name ?? '',
+                place.locality ?? '',
+                place.administrativeArea ?? '',
+                place.country ?? '',
+              ].where((e) => e.isNotEmpty).join(", ").trim();
+          setState(() {
+            currentLocation =
+                address.isNotEmpty
+                    ? address
+                    : "Address unavailable (${position.latitude}, ${position.longitude})";
+          });
+        } else {
+          if (mounted) {
+            setState(() {
+              currentLocation =
+                  "Address unavailable (${position.latitude}, ${position.longitude})";
+            });
+          }
+        }
+      } catch (e) {
         if (mounted) {
           setState(() {
             currentLocation =
-                "${place.name}, ${place.locality}, ${place.administrativeArea}, ${place.country}";
+                "Address unavailable (${position.latitude}, ${position.longitude})";
           });
-        }
-      } else {
-        if (mounted) {
-          setState(() {
-            currentLocation = "No address found for these coordinates";
-          });
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text("Unable to get address: $e")));
         }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          currentLocation = "Error fetching location: ${e.toString()}";
+          currentLocation = "Error fetching location: $e";
         });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Location error: $e")));
       }
     }
   }
