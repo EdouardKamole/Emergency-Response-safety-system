@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emergency_app/screens/forgot_password.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -18,6 +19,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen>
     with TickerProviderStateMixin {
+  final _auth = FirebaseAuth.instance;
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -106,7 +108,6 @@ class _LoginScreenState extends State<LoginScreen>
       _isLoading = true;
       _errorMessage = null;
     });
-
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
@@ -115,25 +116,32 @@ class _LoginScreenState extends State<LoginScreen>
         });
         return;
       }
-
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
       final OAuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-
-      await FirebaseAuth.instance.signInWithCredential(credential);
-
-      _bounceController.forward().then((_) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => HomeScreen()),
-        );
-      });
+      UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userCredential.user?.uid)
+          .set({
+            'fullName': googleUser.displayName ?? "",
+            'email': googleUser.email,
+            'id': userCredential.user?.uid,
+            'role': 'user',
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => HomeScreen()),
+      );
     } catch (e) {
       setState(() {
-        _errorMessage = "Failed to sign in with Google. Please try again.";
+        _errorMessage = "Failed to sign up with Google. Please try again.";
       });
     } finally {
       setState(() {
