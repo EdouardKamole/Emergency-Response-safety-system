@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:emergency_response_safety_system_ambulance_side/utils/tracking_state.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +9,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:latlong2/latlong.dart' as latlong;
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
-import 'package:provider/provider.dart';
 
 class TrackRescuerScreen extends StatefulWidget {
   final String reportId;
@@ -31,18 +29,28 @@ class TrackRescuerScreen extends StatefulWidget {
 class _TrackRescuerScreenState extends State<TrackRescuerScreen>
     with TickerProviderStateMixin {
   late latlong.LatLng _emergencyLocation;
+  final _rescuerLocation = ValueNotifier<latlong.LatLng?>(null);
+  final _etaSeconds = ValueNotifier<int>(300);
+  final _statusStep = ValueNotifier<int>(0);
+  final _routePoints = ValueNotifier<List<latlong.LatLng>>([]);
+  final _isRescuerAssigned = ValueNotifier<bool>(false);
   late AnimationController _pulseController;
   late AnimationController _routeController;
   late Animation<double> _pulseAnimation;
   late Animation<double> _routeAnimation;
   late StreamSubscription<DatabaseEvent> _rescuerSubscription;
-  StreamSubscription<Position>? _positionSubscription; // New: For victim location
+  StreamSubscription<Position>? _victimLocationSubscription;
   final MapController _mapController = MapController();
   bool _isLoading = true;
   String? _errorMessage;
   DateTime? _lastRouteFetch;
   bool _hasUserInteractedWithMap = false;
+  bool _autoRecenter = true;
   double _lastZoom = 13.0;
+  double? _distanceToRescuer;
+  String? _rescuerPhoneNumber;
+  static const String _orsApiKey =
+      '5b3ce3597851110001cf624862ba9d9ce4314f088c7a3b8fec0f957e';
 
   final List<Map<String, dynamic>> _statuses = [
     {
@@ -70,27 +78,26 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
       widget.emergencyLat,
       widget.emergencyLon,
     );
+    _rescuerLocation.value = latlong.LatLng(
+      widget.emergencyLat + 0.01,
+      widget.emergencyLon + 0.01,
+    );
 
-    // Check and request location permissions
     _checkLocationPermissions();
-
-    // Start live victim location updates
-    _startLocationUpdates();
-
+    _startVictimLocationUpdates();
     _fetchInitialRescuerData();
     _listenToRescuerUpdates();
 
-    // Animation controllers
     _pulseController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat();
-    _pulseAnimation = Tween<double>(begin: 0.5, end: 1.0).animate(
+    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
     );
 
     _routeController = AnimationController(
-      duration: const Duration(seconds: 1),
+      duration: const Duration(milliseconds: 500),
       vsync: this,
     );
     _routeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
@@ -98,16 +105,10 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
     );
     _routeController.forward();
 
-    // Center map initially
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _recenterMap();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _recenterMap());
 
-    // Listen for user map interactions
     _mapController.mapEventStream.listen((event) {
-      if (event is MapEventMove) {
-        _hasUserInteractedWithMap = true;
-      } else if (_mapController.camera.zoom != _lastZoom) {
+      if (event is MapEventMove || _mapController.camera.zoom != _lastZoom) {
         _hasUserInteractedWithMap = true;
         _lastZoom = _mapController.camera.zoom;
       }
@@ -115,54 +116,47 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
   }
 
   Future<void> _checkLocationPermissions() async {
-    bool serviceEnabled;
-    LocationPermission permission;
-
-    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Location services are disabled.";
-        });
-      }
+      if (mounted)
+        setState(() => _errorMessage = "Location services are disabled.");
       return;
     }
 
-    permission = await Geolocator.checkPermission();
+    LocationPermission permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = "Location permissions are denied.";
-          });
-        }
+        if (mounted)
+          setState(() => _errorMessage = "Location permissions are denied.");
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Location permissions are permanently denied.";
-        });
-      }
+      if (mounted)
+        setState(
+          () => _errorMessage = "Location permissions are permanently denied.",
+        );
       return;
     }
   }
 
-  void _startLocationUpdates() {
-    _positionSubscription?.cancel();
-    _positionSubscription = Geolocator.getPositionStream(
+  void _startVictimLocationUpdates() {
+    _victimLocationSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 10, // Update every 10 meters
+        distanceFilter: 5,
       ),
     ).listen(
       (Position position) async {
         if (!mounted) return;
         setState(() {
-          _emergencyLocation = latlong.LatLng(position.latitude, position.longitude);
+          _emergencyLocation = latlong.LatLng(
+            position.latitude,
+            position.longitude,
+          );
+          _updateDistanceToRescuer();
         });
 
         final database = FirebaseDatabase.instance.ref();
@@ -172,79 +166,92 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
           'timestamp': DateTime.now().toIso8601String(),
         };
 
-        try {
-          await database.child('reports/${widget.reportId}/location').set(updateData);
-          final trackingState = Provider.of<TrackingState>(context, listen: false);
-          trackingState.updateVictimLocation(
-            widget.reportId,
-            latlong.LatLng(position.latitude, position.longitude),
-          );
-          if (!_hasUserInteractedWithMap) {
-            _fetchRoutePoints();
-            _recenterMap();
-          }
-        } catch (e) {
-          debugPrint("Error updating victim location: $e");
-          if (mounted) {
-            setState(() {
-              _errorMessage = "Error updating victim location: $e";
-            });
+        int retries = 3;
+        while (retries > 0) {
+          try {
+            await database
+                .child('reports/${widget.reportId}/location')
+                .set(updateData);
+            if (!_hasUserInteractedWithMap && _autoRecenter) {
+              _fetchRoutePoints();
+              _recenterMap();
+            }
+            debugPrint(
+              'Victim location updated: (${position.latitude}, ${position.longitude})',
+            );
+            break;
+          } catch (e) {
+            retries--;
+            if (retries == 0 && mounted) {
+              setState(
+                () => _errorMessage = "Error updating victim location: $e",
+              );
+            }
+            await Future.delayed(const Duration(seconds: 1));
           }
         }
       },
       onError: (e) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = "Error fetching victim location: $e";
-          });
-        }
+        if (mounted)
+          setState(() => _errorMessage = "Error fetching victim location: $e");
       },
     );
+  }
+
+  void _updateDistanceToRescuer() {
+    final rescuerLoc = _rescuerLocation.value;
+    if (rescuerLoc != null) {
+      _distanceToRescuer = Geolocator.distanceBetween(
+        _emergencyLocation.latitude,
+        _emergencyLocation.longitude,
+        rescuerLoc.latitude,
+        rescuerLoc.longitude,
+      );
+    }
   }
 
   Future<void> _fetchInitialRescuerData() async {
     try {
       final database = FirebaseDatabase.instance.ref();
       final snapshot =
-          await database.child('reports/${widget.reportId}/assignedRescuer').get();
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          final data = snapshot.value as Map<dynamic, dynamic>?;
-          final trackingState = Provider.of<TrackingState>(context, listen: false);
-          if (data != null && data.isNotEmpty) {
-            final rescuerId = data.keys.first;
-            final rescuerData = Map<String, dynamic>.from(data[rescuerId]);
-            final double? latitude = rescuerData['latitude']?.toDouble();
-            final double? longitude = rescuerData['longitude']?.toDouble();
-            final int? eta = rescuerData['eta']?.toInt();
-            final String? status = rescuerData['status']?.toString();
+          await database
+              .child('reports/${widget.reportId}/assignedRescuer')
+              .get();
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        final data = snapshot.value as Map<dynamic, dynamic>?;
+        if (data != null && data.isNotEmpty) {
+          _isRescuerAssigned.value = true;
+          final rescuerId = data.keys.first;
+          final rescuerData = Map<String, dynamic>.from(data[rescuerId]);
+          final double? latitude = rescuerData['latitude']?.toDouble();
+          final double? longitude = rescuerData['longitude']?.toDouble();
+          final int? eta = rescuerData['eta']?.toInt();
+          final String? status = rescuerData['status']?.toString();
+          _rescuerPhoneNumber = rescuerData['phoneNumber']?.toString();
 
-            if (latitude != null && longitude != null) {
-              trackingState.updateRescuerLocation(
-                widget.reportId,
-                latlong.LatLng(latitude, longitude),
-              );
-              trackingState.updateEta(widget.reportId, eta ?? 300);
-              int statusStep = 0;
-              if (status == 'arrived') statusStep = 1;
-              trackingState.updateStatus(widget.reportId, statusStep);
-              _fetchRoutePoints();
-            } else {
-              _errorMessage = "Invalid rescuer location data";
-            }
+          if (latitude != null && longitude != null) {
+            _rescuerLocation.value = latlong.LatLng(latitude, longitude);
+            _etaSeconds.value = eta ?? 300;
+            _statusStep.value = status == 'arrived' ? 1 : 0;
+            _fetchRoutePoints();
+            _updateDistanceToRescuer();
           } else {
-            _errorMessage = "Waiting for rescuer to be assigned";
+            _errorMessage = "Invalid rescuer location data";
           }
-        });
-      }
-    } catch (error) {
-      if (mounted) {
+        } else {
+          _isRescuerAssigned.value = false;
+          _errorMessage = "Waiting for rescuer to be assigned";
+        }
+      });
+    } catch (e) {
+      if (mounted)
         setState(() {
           _isLoading = false;
-          _errorMessage = "Error fetching initial rescuer data: $error";
+          _isRescuerAssigned.value = false;
+          _errorMessage = "Error fetching initial rescuer data: $e";
         });
-      }
     }
   }
 
@@ -257,32 +264,25 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
           (event) {
             if (!mounted) return;
             setState(() {
-              _isLoading = false;
               final data = event.snapshot.value as Map<dynamic, dynamic>?;
-              final trackingState = Provider.of<TrackingState>(context, listen: false);
               if (data != null && data.isNotEmpty) {
+                _isRescuerAssigned.value = true;
                 final rescuerId = data.keys.first;
                 final rescuerData = Map<String, dynamic>.from(data[rescuerId]);
                 final double? latitude = rescuerData['latitude']?.toDouble();
                 final double? longitude = rescuerData['longitude']?.toDouble();
                 final int? eta = rescuerData['eta']?.toInt();
                 final String? status = rescuerData['status']?.toString();
+                _rescuerPhoneNumber = rescuerData['phoneNumber']?.toString();
 
                 if (latitude != null && longitude != null) {
-                  trackingState.updateRescuerLocation(
-                    widget.reportId,
-                    latlong.LatLng(latitude, longitude),
-                  );
-                  trackingState.updateEta(widget.reportId, eta ?? 300);
+                  _rescuerLocation.value = latlong.LatLng(latitude, longitude);
+                  _etaSeconds.value = eta ?? _etaSeconds.value;
+                  _updateDistanceToRescuer();
 
-                  double distance = Geolocator.distanceBetween(
-                    latitude,
-                    longitude,
-                    _emergencyLocation.latitude,
-                    _emergencyLocation.longitude,
-                  );
-                  int newStatusStep = trackingState.getStatusStep(widget.reportId);
-                  if (distance < 100 && newStatusStep < 1) {
+                  double distance = _distanceToRescuer ?? 0;
+                  int newStatusStep = _statusStep.value;
+                  if (distance < 100 && newStatusStep == 0) {
                     newStatusStep = 1; // At Scene
                   } else if (newStatusStep == 1 && distance > 100) {
                     newStatusStep = 2; // Transporting Patient
@@ -291,13 +291,12 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
                   } else if (status == 'arrived' && newStatusStep < 1) {
                     newStatusStep = 1;
                   }
-                  trackingState.updateStatus(widget.reportId, newStatusStep);
+                  _statusStep.value = newStatusStep;
 
-                  if (!_hasUserInteractedWithMap) {
+                  if (!_hasUserInteractedWithMap && _autoRecenter) {
                     _fetchRoutePoints();
                     _recenterMap();
                   }
-
                   _routeController
                     ..reset()
                     ..forward();
@@ -305,45 +304,39 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
                   _errorMessage = "Invalid rescuer location data";
                 }
               } else {
+                _isRescuerAssigned.value = false;
                 _errorMessage = "Waiting for rescuer to be assigned";
               }
             });
           },
           onError: (error) {
-            if (mounted) {
+            if (mounted)
               setState(() {
                 _isLoading = false;
+                _isRescuerAssigned.value = false;
                 _errorMessage = "Error fetching rescuer data: $error";
               });
-            }
           },
         );
   }
 
   Future<void> _fetchRoutePoints() async {
     if (_lastRouteFetch != null &&
-        DateTime.now().difference(_lastRouteFetch!).inSeconds < 10) {
-      return; // Throttle route requests
+        DateTime.now().difference(_lastRouteFetch!).inSeconds < 15) {
+      return;
     }
     _lastRouteFetch = DateTime.now();
 
-    final trackingState = Provider.of<TrackingState>(context, listen: false);
-    final rescuerLoc = trackingState.getRescuerLocation(widget.reportId);
-    if (rescuerLoc == null) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Rescuer location unavailable";
-        });
-      }
+    final rescuerLoc = _rescuerLocation.value;
+    if (rescuerLoc == null || !_isRescuerAssigned.value) {
+      _routePoints.value = [];
       return;
     }
 
-    const String apiKey =
-        '5b3ce3597851110001cf624862ba9d9ce4314f088c7a3b8fec0f957e';
     try {
       final response = await http.get(
         Uri.parse(
-          'https://api.openrouteservice.org/v2/directions/driving-car?api_key=$apiKey&start=${rescuerLoc.longitude},${rescuerLoc.latitude}&end=${_emergencyLocation.longitude},${_emergencyLocation.latitude}',
+          'https://api.openrouteservice.org/v2/directions/driving-car?api_key=$_orsApiKey&start=${rescuerLoc.longitude},${rescuerLoc.latitude}&end=${_emergencyLocation.longitude},${_emergencyLocation.latitude}',
         ),
       );
 
@@ -355,28 +348,20 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
             coordinates
                 .map((coord) => latlong.LatLng(coord[1], coord[0]))
                 .toList();
-        trackingState.updateRoutePoints(widget.reportId, newRoutePoints);
+        _routePoints.value = newRoutePoints;
       } else {
-        trackingState.updateRoutePoints(widget.reportId, [
-          rescuerLoc,
-          _emergencyLocation,
-        ]);
-        if (mounted) {
-          setState(() {
-            _errorMessage = "Failed to fetch route, using direct path";
-          });
-        }
+        _routePoints.value = [rescuerLoc, _emergencyLocation];
+        if (mounted)
+          setState(
+            () => _errorMessage = "Failed to fetch route, using direct path",
+          );
       }
     } catch (e) {
-      trackingState.updateRoutePoints(widget.reportId, [
-        rescuerLoc,
-        _emergencyLocation,
-      ]);
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Error fetching route, using direct path";
-        });
-      }
+      _routePoints.value = [rescuerLoc, _emergencyLocation];
+      if (mounted)
+        setState(
+          () => _errorMessage = "Error fetching route, using direct path",
+        );
     }
   }
 
@@ -393,8 +378,8 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
         return Transform.scale(
           scale: isPulsing ? _pulseAnimation.value : 1.0,
           child: Container(
-            width: size,
-            height: size,
+            width: size.w,
+            height: size.h,
             decoration: BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
@@ -406,7 +391,7 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
                 ),
               ],
             ),
-            child: Icon(icon, color: color, size: size * 0.6),
+            child: Icon(icon, color: color, size: size.w * 0.6),
           ),
         );
       },
@@ -414,8 +399,7 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
   }
 
   void _recenterMap() {
-    final trackingState = Provider.of<TrackingState>(context, listen: false);
-    final rescuerLoc = trackingState.getRescuerLocation(widget.reportId);
+    final rescuerLoc = _rescuerLocation.value;
     final bounds = LatLngBounds.fromPoints([
       _emergencyLocation,
       rescuerLoc ?? _emergencyLocation,
@@ -427,407 +411,590 @@ class _TrackRescuerScreenState extends State<TrackRescuerScreen>
     _lastZoom = _mapController.camera.zoom;
   }
 
+  Future<void> _callRescuer() async {
+    if (_rescuerPhoneNumber == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Rescuer phone number not available")),
+      );
+      return;
+    }
+    // Note: Requires url_launcher package. Comment out if not added.
+    // final Uri uri = Uri(scheme: 'tel', path: _rescuerPhoneNumber);
+    // if (await canLaunchUrl(uri)) {
+    //   await launchUrl(uri);
+    // } else {
+    //   ScaffoldMessenger.of(context).showSnackBar(
+    //     const SnackBar(content: Text("Unable to make call")),
+    //   );
+    // }
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Call feature requires url_launcher package")),
+    );
+  }
+
   @override
   void dispose() {
     _rescuerSubscription.cancel();
-    _positionSubscription?.cancel();
+    _victimLocationSubscription?.cancel();
     _pulseController.dispose();
     _routeController.dispose();
+    _rescuerLocation.dispose();
+    _etaSeconds.dispose();
+    _statusStep.dispose();
+    _routePoints.dispose();
+    _isRescuerAssigned.dispose();
     _mapController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final trackingState = Provider.of<TrackingState>(context);
-    return Scaffold(
-      body: Stack(
-        children: [
-          FlutterMap(
-            mapController: _mapController,
-            options: MapOptions(
-              initialCenter: _emergencyLocation,
-              initialZoom: 13.0,
-              minZoom: 10.0,
-              maxZoom: 18.0,
-            ),
+    return Builder(
+      builder: (context) {
+        return Scaffold(
+          body: Stack(
             children: [
-              TileLayer(
-                urlTemplate:
-                    "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-                subdomains: const ['a', 'b', 'c'],
-              ),
-              PolylineLayer(
-                polylines: [
-                  if (trackingState.getRoutePoints(widget.reportId).length > 1)
-                    Polyline(
-                      points: trackingState.getRoutePoints(widget.reportId),
-                      color: Colors.redAccent.withOpacity(0.8),
-                      strokeWidth: 4.0,
-                    ),
+              FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(
+                  initialCenter: _emergencyLocation,
+                  initialZoom: 13.0,
+                  minZoom: 10.0,
+                  maxZoom: 18.0,
+                ),
+                children: [
+                  TileLayer(
+                    urlTemplate:
+                        "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                    subdomains: const ['a', 'b', 'c'],
+                  ),
+                  ValueListenableBuilder<List<latlong.LatLng>>(
+                    valueListenable: _routePoints,
+                    builder: (context, routePoints, _) {
+                      return AnimatedBuilder(
+                        animation: _routeAnimation,
+                        builder: (context, child) {
+                          int visiblePoints =
+                              (routePoints.length * _routeAnimation.value)
+                                  .round();
+                          List<latlong.LatLng> visibleRoute =
+                              routePoints.take(visiblePoints).toList();
+                          return PolylineLayer(
+                            polylines: [
+                              if (visibleRoute.length >= 2 &&
+                                  _isRescuerAssigned.value)
+                                Polyline(
+                                  points: visibleRoute,
+                                  color: Colors.redAccent.withOpacity(0.8),
+                                  strokeWidth: 4.0,
+                                ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                  ValueListenableBuilder<latlong.LatLng?>(
+                    valueListenable: _rescuerLocation,
+                    builder: (context, rescuerLoc, _) {
+                      return MarkerLayer(
+                        markers: [
+                          Marker(
+                            width: 50.w,
+                            height: 50.h,
+                            point: _emergencyLocation,
+                            child: _buildCustomMarker(
+                              icon: Icons.person_pin_circle,
+                              color: Colors.blue,
+                              size: 50,
+                              isPulsing: true,
+                            ),
+                          ),
+                          if (rescuerLoc != null && _isRescuerAssigned.value)
+                            Marker(
+                              width: 45.w,
+                              height: 45.h,
+                              point: rescuerLoc,
+                              child: ValueListenableBuilder<int>(
+                                valueListenable: _statusStep,
+                                builder: (_, statusStep, __) {
+                                  return _buildCustomMarker(
+                                    icon: Icons.local_hospital,
+                                    color: _statuses[statusStep]["color"],
+                                    size: 45,
+                                    isPulsing: false,
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
-              MarkerLayer(
-                markers: [
-                  Marker(
-                    width: 50.0,
-                    height: 50.0,
-                    point: _emergencyLocation,
-                    child: _buildCustomMarker(
-                      icon: Icons.person_pin_circle,
-                      color: Colors.blue,
-                      size: 50,
-                      isPulsing: true,
-                    ),
-                  ),
-                  if (trackingState.getRescuerLocation(widget.reportId) != null)
-                    Marker(
-                      width: 45.0,
-                      height: 45.0,
-                      point: trackingState.getRescuerLocation(widget.reportId)!,
-                      child: _buildCustomMarker(
-                        icon: Icons.local_hospital,
-                        color: _statuses[trackingState.getStatusStep(widget.reportId)]["color"],
-                        size: 45,
-                        isPulsing: false,
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-          Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            height: 150,
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Colors.black.withOpacity(0.6), Colors.transparent],
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 10,
-            left: 20,
-            right: 20,
-            child: Row(
-              children: [
-                GestureDetector(
-                  onTap: () => Navigator.pop(context),
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          spreadRadius: 2,
-                        ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 150.h,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.6),
+                        Colors.transparent,
                       ],
                     ),
-                    child: const Icon(
-                      Icons.arrow_back,
-                      color: Colors.redAccent,
-                    ),
                   ),
                 ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 12,
-                      horizontal: 16,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.9),
-                      borderRadius: BorderRadius.circular(25),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
-                          blurRadius: 8,
-                          spreadRadius: 2,
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      "Track Rescuer",
-                      style: GoogleFonts.poppins(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey[800],
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            right: 20,
-            bottom: 230,
-            child: Column(
-              children: [
-                FloatingActionButton(
-                  heroTag: "recenter",
-                  mini: true,
-                  backgroundColor: Colors.white,
-                  onPressed: _recenterMap,
-                  child: const Icon(Icons.my_location, color: Colors.redAccent),
-                ),
-                const SizedBox(height: 10),
-                FloatingActionButton(
-                  heroTag: "zoomIn",
-                  mini: true,
-                  backgroundColor: Colors.white,
-                  onPressed: () {
-                    _mapController.move(
-                      _mapController.camera.center,
-                      (_mapController.camera.zoom) + 1,
-                    );
-                  },
-                  child: const Icon(Icons.add, color: Colors.black),
-                ),
-                const SizedBox(height: 10),
-                FloatingActionButton(
-                  heroTag: "zoomOut",
-                  mini: true,
-                  backgroundColor: Colors.white,
-                  onPressed: () {
-                    _mapController.move(
-                      _mapController.camera.center,
-                      (_mapController.camera.zoom) - 1,
-                    );
-                  },
-                  child: const Icon(Icons.remove, color: Colors.black),
-                ),
-              ],
-            ),
-          ),
-          Positioned(
-            bottom: 30,
-            left: 20,
-            right: 20,
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _errorMessage != null
-                    ? Container(
-                        padding: const EdgeInsets.all(20),
+              ),
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 10.h,
+                left: 20.w,
+                right: 20.w,
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.pop(context),
+                      child: Container(
+                        padding: EdgeInsets.all(8.w),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
+                          color: Colors.white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(12.r),
+                          boxShadow: const [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
-                              blurRadius: 20,
-                              spreadRadius: 5,
-                              offset: const Offset(0, 5),
+                              color: Colors.black12,
+                              blurRadius: 8,
+                              spreadRadius: 2,
+                            ),
+                          ],
+                        ),
+                        child: const Icon(
+                          Icons.arrow_back,
+                          color: Colors.redAccent,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 15.w),
+                    Expanded(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          vertical: 12.h,
+                          horizontal: 16.w,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(25.r),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 8,
+                              spreadRadius: 2,
                             ),
                           ],
                         ),
                         child: Text(
-                          _errorMessage!,
+                          "Track Rescuer",
                           style: GoogleFonts.poppins(
-                            fontSize: 14,
-                            color: _errorMessage ==
-                                    "Waiting for rescuer to be assigned"
-                                ? Colors.orange
-                                : Colors.red,
+                            fontSize: 18.sp,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.grey.shade800,
                           ),
                           textAlign: TextAlign.center,
                         ),
-                      )
-                    : Container(
-                        padding: const EdgeInsets.all(20),
+                      ),
+                    ),
+                    SizedBox(width: 15.w),
+                    GestureDetector(
+                      onTap:
+                          () => setState(() => _autoRecenter = !_autoRecenter),
+                      child: Container(
+                        padding: EdgeInsets.all(8.w),
                         decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
-                          boxShadow: [
+                          color:
+                              _autoRecenter
+                                  ? Colors.blue.withOpacity(0.9)
+                                  : Colors.grey.withOpacity(0.9),
+                          borderRadius: BorderRadius.circular(12.r),
+                          boxShadow: const [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.15),
-                              blurRadius: 20,
-                              spreadRadius: 5,
-                              offset: const Offset(0, 5),
+                              color: Colors.black12,
+                              blurRadius: 8,
+                              spreadRadius: 2,
                             ),
                           ],
                         ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
+                        child: Icon(
+                          Icons.center_focus_strong,
+                          color: Colors.white,
+                          size: 24.sp,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                right: 20.w,
+                bottom: 230.h,
+                child: Column(
+                  children: [
+                    FloatingActionButton(
+                      heroTag: "recenter",
+                      mini: true,
+                      backgroundColor: Colors.white,
+                      onPressed: _recenterMap,
+                      child: const Icon(
+                        Icons.my_location,
+                        color: Colors.redAccent,
+                      ),
+                    ),
+                    SizedBox(height: 10.h),
+                    FloatingActionButton(
+                      heroTag: "zoomIn",
+                      mini: true,
+                      backgroundColor: Colors.white,
+                      onPressed:
+                          () => _mapController.move(
+                            _mapController.camera.center,
+                            _mapController.camera.zoom + 1,
+                          ),
+                      child: const Icon(Icons.add, color: Colors.black),
+                    ),
+                    SizedBox(height: 10.h),
+                    FloatingActionButton(
+                      heroTag: "zoomOut",
+                      mini: true,
+                      backgroundColor: Colors.white,
+                      onPressed:
+                          () => _mapController.move(
+                            _mapController.camera.center,
+                            _mapController.camera.zoom - 1,
+                          ),
+                      child: const Icon(Icons.remove, color: Colors.black),
+                    ),
+                  ],
+                ),
+              ),
+              Positioned(
+                bottom: 30.h,
+                left: 20.w,
+                right: 20.w,
+                child:
+                    _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : ValueListenableBuilder<bool>(
+                          valueListenable: _isRescuerAssigned,
+                          builder: (context, isRescuerAssigned, _) {
+                            return _errorMessage != null && !isRescuerAssigned
+                                ? Container(
+                                  padding: EdgeInsets.all(20.w),
                                   decoration: BoxDecoration(
-                                    color: _statuses[trackingState.getStatusStep(widget.reportId)]["color"]
-                                        .withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Icon(
-                                    _statuses[trackingState.getStatusStep(widget.reportId)]["icon"],
-                                    color: _statuses[trackingState.getStatusStep(widget.reportId)]["color"],
-                                    size: 24,
-                                  ),
-                                ),
-                                const SizedBox(width: 20),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _statuses[trackingState.getStatusStep(widget.reportId)]["text"],
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.grey[800],
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        "Rescuer Unit #${FirebaseAuth.instance.currentUser?.uid.substring(0, 6) ?? 'RES-001'}",
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 14,
-                                          color: Colors.grey[600],
-                                        ),
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(20.r),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black12,
+                                        blurRadius: 20,
+                                        spreadRadius: 5,
+                                        offset: Offset(0, 5),
                                       ),
                                     ],
                                   ),
-                                ),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8,
-                                    horizontal: 16,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.redAccent,
-                                        Colors.red[700]!,
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(20),
-                                  ),
                                   child: Text(
-                                    "ETA: ${(trackingState.getEtaSeconds(widget.reportId) ~/ 60).clamp(1, 15)} mins",
+                                    _errorMessage!,
                                     style: GoogleFonts.poppins(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.white,
+                                      fontSize: 14.sp,
+                                      color:
+                                          _errorMessage ==
+                                                  "Waiting for rescuer to be assigned"
+                                              ? Colors.orange
+                                              : Colors.red,
                                     ),
+                                    textAlign: TextAlign.center,
                                   ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 15),
-                            Container(
-                              height: 6,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(3),
-                              ),
-                              child: FractionallySizedBox(
-                                widthFactor:
-                                    (trackingState.getStatusStep(widget.reportId) + 1) /
-                                    _statuses.length,
-                                alignment: Alignment.centerLeft,
-                                child: Container(
+                                )
+                                : Container(
+                                  padding: EdgeInsets.all(20.w),
                                   decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        Colors.redAccent,
-                                        Colors.red[700]!,
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(3),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.green[50],
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: Colors.green[300]!,
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(20.r),
+                                    boxShadow: const [
+                                      BoxShadow(
+                                        color: Colors.black12,
+                                        blurRadius: 20,
+                                        spreadRadius: 5,
+                                        offset: Offset(0, 5),
                                       ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.call,
-                                          color: Colors.green[500],
-                                          size: 24,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          "Call Rescuer",
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.green[500],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
+                                    ],
                                   ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue[50],
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: Colors.blue[300]!,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ValueListenableBuilder<int>(
+                                        valueListenable: _statusStep,
+                                        builder: (context, statusStep, _) {
+                                          return Row(
+                                            children: [
+                                              Container(
+                                                padding: EdgeInsets.all(12.w),
+                                                decoration: BoxDecoration(
+                                                  color:
+                                                      _statuses[statusStep]["color"]
+                                                          .withOpacity(0.1),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        12.r,
+                                                      ),
+                                                ),
+                                                child: Icon(
+                                                  _statuses[statusStep]["icon"],
+                                                  color:
+                                                      _statuses[statusStep]["color"],
+                                                  size: 24.sp,
+                                                ),
+                                              ),
+                                              SizedBox(width: 15.w),
+                                              Expanded(
+                                                child: Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      _statuses[statusStep]["text"],
+                                                      style:
+                                                          GoogleFonts.poppins(
+                                                            fontSize: 18.sp,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            color:
+                                                                Colors
+                                                                    .grey
+                                                                    .shade800,
+                                                          ),
+                                                    ),
+                                                    SizedBox(height: 4.h),
+                                                    Text(
+                                                      "Rescuer Unit #${FirebaseAuth.instance.currentUser?.uid.substring(0, 6) ?? 'RES-001'}",
+                                                      style:
+                                                          GoogleFonts.poppins(
+                                                            fontSize: 14.sp,
+                                                            color:
+                                                                Colors
+                                                                    .grey
+                                                                    .shade600,
+                                                          ),
+                                                    ),
+                                                    if (_distanceToRescuer !=
+                                                        null)
+                                                      Text(
+                                                        "Distance: ${(_distanceToRescuer! / 1000).toStringAsFixed(1)} km",
+                                                        style:
+                                                            GoogleFonts.poppins(
+                                                              fontSize: 14.sp,
+                                                              color:
+                                                                  Colors
+                                                                      .grey
+                                                                      .shade600,
+                                                            ),
+                                                      ),
+                                                  ],
+                                                ),
+                                              ),
+                                              ValueListenableBuilder<int>(
+                                                valueListenable: _etaSeconds,
+                                                builder: (context, eta, _) {
+                                                  return Container(
+                                                    padding:
+                                                        EdgeInsets.symmetric(
+                                                          vertical: 8.h,
+                                                          horizontal: 16.w,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      gradient: LinearGradient(
+                                                        colors: [
+                                                          Colors.redAccent,
+                                                          Colors.red.shade700,
+                                                        ],
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            20.r,
+                                                          ),
+                                                    ),
+                                                    child: Text(
+                                                      "ETA: ${(eta ~/ 60).clamp(1, 15)} min",
+                                                      style:
+                                                          GoogleFonts.poppins(
+                                                            fontSize: 14.sp,
+                                                            fontWeight:
+                                                                FontWeight.w600,
+                                                            color: Colors.white,
+                                                          ),
+                                                    ),
+                                                  );
+                                                },
+                                              ),
+                                            ],
+                                          );
+                                        },
                                       ),
-                                    ),
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.message,
-                                          color: Colors.blue[500],
-                                          size: 24,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          "Message",
-                                          style: GoogleFonts.poppins(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.blue[500],
+                                      SizedBox(height: 15.h),
+                                      ValueListenableBuilder<int>(
+                                        valueListenable: _statusStep,
+                                        builder: (context, statusStep, _) {
+                                          return Container(
+                                            height: 6.h,
+                                            decoration: BoxDecoration(
+                                              color: Colors.grey.shade200,
+                                              borderRadius:
+                                                  BorderRadius.circular(3.r),
+                                            ),
+                                            child: FractionallySizedBox(
+                                              widthFactor:
+                                                  (statusStep + 1) /
+                                                  _statuses.length,
+                                              alignment: Alignment.centerLeft,
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  gradient: LinearGradient(
+                                                    colors: [
+                                                      Colors.redAccent,
+                                                      Colors.red.shade700,
+                                                    ],
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        3.r,
+                                                      ),
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                      SizedBox(height: 10.h),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: GestureDetector(
+                                              onTap: _callRescuer,
+                                              child: Container(
+                                                padding: EdgeInsets.symmetric(
+                                                  vertical: 12.h,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.green.shade50,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        12.r,
+                                                      ),
+                                                  border: Border.all(
+                                                    color:
+                                                        Colors.green.shade300,
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.call,
+                                                      color:
+                                                          Colors.green.shade700,
+                                                      size: 20.sp,
+                                                    ),
+                                                    SizedBox(width: 8.w),
+                                                    Text(
+                                                      "Call Rescuer",
+                                                      style:
+                                                          GoogleFonts.poppins(
+                                                            fontSize: 14.sp,
+                                                            fontWeight:
+                                                                FontWeight.w500,
+                                                            color:
+                                                                Colors
+                                                                    .green
+                                                                    .shade700,
+                                                          ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
                                           ),
-                                        ),
-                                      ],
-                                    ),
+                                          SizedBox(width: 12.w),
+                                          Expanded(
+                                            child: GestureDetector(
+                                              onTap: () {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      "Messaging not implemented",
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                              child: Container(
+                                                padding: EdgeInsets.symmetric(
+                                                  vertical: 12.h,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blue.shade50,
+                                                  borderRadius:
+                                                      BorderRadius.circular(
+                                                        12.r,
+                                                      ),
+                                                  border: Border.all(
+                                                    color: Colors.blue.shade300,
+                                                  ),
+                                                ),
+                                                child: Row(
+                                                  mainAxisAlignment:
+                                                      MainAxisAlignment.center,
+                                                  children: [
+                                                    Icon(
+                                                      Icons.message,
+                                                      color:
+                                                          Colors.blue.shade700,
+                                                      size: 20.sp,
+                                                    ),
+                                                    SizedBox(width: 8.w),
+                                                    Text(
+                                                      "Message",
+                                                      style:
+                                                          GoogleFonts.poppins(
+                                                            fontSize: 14.sp,
+                                                            fontWeight:
+                                                                FontWeight.w500,
+                                                            color:
+                                                                Colors
+                                                                    .blue
+                                                                    .shade700,
+                                                          ),
+                                                    ),
+                                                  ],
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
-                            ),
-                          ],
+                                );
+                          },
                         ),
-                      ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
