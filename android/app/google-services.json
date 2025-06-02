@@ -23,11 +23,72 @@
           }
         },
         {
+          "client_id": "459911736231-m355oe3d8djbucondrtu0p57j87pi5ap.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.emergency_app",
+            "certificate_hash": "20ba75258edf7ec743e557b04a533ecc0c546c5b"
+          }
+        },
+        {
           "client_id": "459911736231-vhqsqiq75navi2r3vq5o44s9i6tesnql.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.example.emergency_app",
             "certificate_hash": "f897f3e588f4ef6444c348601e911c1da798e30b"
+          }
+        },
+        {
+          "client_id": "459911736231-psg307ohncc0r8bnb3f17cqqfii5rbs8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA2mFzgiaPnxEmbBSSkelOIK1uJTosMWPA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "459911736231-psg307ohncc0r8bnb3f17cqqfii5rbs8.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:459911736231:android:ae251301aee019d045e482",
+        "android_client_info": {
+          "package_name": "com.example.emergency_response_safety_system_ambulance_side"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "459911736231-2agoll7pk18lfq6m01978ler68d5q01h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.emergency_response_safety_system_ambulance_side",
+            "certificate_hash": "f897f3e588f4ef6444c348601e911c1da798e30b"
+          }
+        },
+        {
+          "client_id": "459911736231-ml3aaggt755iemqtd1kd6pj614r4i82h.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.emergency_response_safety_system_ambulance_side",
+            "certificate_hash": "20ba75258edf7ec743e557b04a533ecc0c546c5b"
+          }
+        },
+        {
+          "client_id": "459911736231-qaokub1lvesipvg5oa79krq71bsf6n4n.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.emergency_response_safety_system_ambulance_side",
+            "certificate_hash": "97e39f3b1b1ad5fa20ade3c6dddc55dba53fa855"
           }
         },
         {
