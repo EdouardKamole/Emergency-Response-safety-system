@@ -357,8 +357,7 @@ class _ProfileScreenState extends State<ProfileScreen>
             child: Column(
               children: [
                 _buildProfileHeader(),
-                SizedBox(height: 30.h),
-                _buildEmergencyToggle(),
+
                 SizedBox(height: 30.h),
                 _buildPersonalInfoSection(),
                 SizedBox(height: 24.h),
@@ -456,88 +455,6 @@ class _ProfileScreenState extends State<ProfileScreen>
               fontSize: 14.sp,
               color: Colors.grey[600],
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmergencyToggle() {
-    return Container(
-      padding: EdgeInsets.all(20.w),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            _emergencyMode
-                ? Colors.red.withOpacity(0.1)
-                : Colors.green.withOpacity(0.1),
-            _emergencyMode
-                ? Colors.red.withOpacity(0.05)
-                : Colors.green.withOpacity(0.05),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(
-          color:
-              _emergencyMode
-                  ? Colors.red.withOpacity(0.3)
-                  : Colors.green.withOpacity(0.3),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(12.w),
-            decoration: BoxDecoration(
-              color:
-                  _emergencyMode
-                      ? Colors.red.withOpacity(0.2)
-                      : Colors.green.withOpacity(0.2),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              _emergencyMode ? Icons.emergency : Icons.verified_user,
-              color: _emergencyMode ? Colors.red : Colors.green,
-              size: 24.sp,
-            ),
-          ),
-          SizedBox(width: 16.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _emergencyMode ? "Emergency Mode ON" : "Emergency Mode OFF",
-                  style: GoogleFonts.poppins(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.bold,
-                    color: _emergencyMode ? Colors.red : Colors.green,
-                  ),
-                ),
-                Text(
-                  _emergencyMode
-                      ? "Quick access to emergency features"
-                      : "Normal mode - tap to enable emergency features",
-                  style: GoogleFonts.poppins(
-                    fontSize: 12.sp,
-                    color: Colors.grey[600],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Switch(
-            value: _emergencyMode,
-            onChanged:
-                _isEditing
-                    ? (value) {
-                      setState(() {
-                        _emergencyMode = value;
-                      });
-                    }
-                    : null,
-            activeColor: Colors.red,
-            inactiveThumbColor: Colors.green,
           ),
         ],
       ),
