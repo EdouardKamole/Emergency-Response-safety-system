@@ -1,4 +1,4 @@
-import 'dart:async'; // Added for TimeoutException
+import 'dart:async';
 import 'package:emergency_app/screens/history_screen.dart';
 import 'package:emergency_app/screens/profile_screen.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +6,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emergency_app/screens/track_rescue.dart';
 import 'package:emergency_app/screens/sos_screen.dart';
 import 'package:geolocator/geolocator.dart';
@@ -26,24 +27,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late AnimationController _slideController;
   String userName = "";
   bool isEmergencyActive = false;
-  String currentLocation = "Fetching location..."; // Initial state for location
-  Position? _currentPosition; // Added to store position
+  String currentLocation = "Fetching location...";
+  Position? _currentPosition;
+  bool _isLoadingUserData = true;
 
   @override
   void initState() {
     super.initState();
     _fetchLatestReport();
     _fetchUserData();
-    _requestLocationPermission(); // Request and fetch location
+    _requestLocationPermission();
 
-    // Initialize animations
     _pulseController = AnimationController(
-      duration: Duration(seconds: 2),
+      duration: const Duration(seconds: 2),
       vsync: this,
     )..repeat();
 
     _slideController = AnimationController(
-      duration: Duration(milliseconds: 800),
+      duration: const Duration(milliseconds: 800),
       vsync: this,
     )..forward();
   }
@@ -55,27 +56,58 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  // Fetch user data for personalization
   Future<void> _fetchUserData() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
+    if (user == null) {
+      if (mounted) {
+        setState(() {
+          userName = "Guest";
+          _isLoadingUserData = false;
+        });
+        _showSnackBar("User not authenticated", isError: true);
+      }
+      print('Error: User not authenticated');
+      return;
+    }
+
+    setState(() => _isLoadingUserData = true);
 
     try {
-      final database = FirebaseDatabase.instance.ref('users/${user.uid}');
-      final snapshot = await database.get();
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get()
+          .timeout(const Duration(seconds: 5));
 
-      if (snapshot.exists && mounted) {
-        final userData = Map<String, dynamic>.from(snapshot.value as Map);
+      if (mounted && doc.exists) {
+        final userData = doc.data();
         setState(() {
-          userName = userData['name'] ?? userData['fullName'] ?? "User";
+          userName = userData?['fullName'] ?? user.email ?? "Guest";
+          _isLoadingUserData = false;
         });
+        print('User data loaded: $userName');
+      } else {
+        if (mounted) {
+          setState(() {
+            userName = user.email ?? "Guest";
+            _isLoadingUserData = false;
+          });
+          _showSnackBar("No user data found", isError: false);
+        }
+        print('No user data found in Firestore');
       }
     } catch (e) {
-      print("Error fetching user data: $e");
+      if (mounted) {
+        setState(() {
+          userName = user.email ?? "Guest";
+          _isLoadingUserData = false;
+        });
+        _showSnackBar("Error fetching user data: $e", isError: true);
+      }
+      print('Error in _fetchUserData: $e');
     }
   }
 
-  // Request location permission
   Future<void> _requestLocationPermission() async {
     var status = await Permission.location.status;
     if (status.isDenied) {
@@ -86,9 +118,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           setState(() {
             currentLocation = "Location permission denied";
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Please grant location permission")),
-          );
+          _showSnackBar("Please grant location permission", isError: true);
         }
         print('Location permission denied');
       }
@@ -99,38 +129,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         setState(() {
           currentLocation = "Location permission permanently denied";
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Please enable location in app settings"),
-          ),
-        );
+        _showSnackBar("Please enable location in app settings", isError: true);
       }
       print('Location permission permanently denied');
-      await openAppSettings(); // Prompt user to enable in settings
+      await openAppSettings();
     }
   }
 
-  // Fetch current location
   Future<void> _getCurrentLocation() async {
     try {
-      // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted) {
           setState(() {
             currentLocation = "Location services are disabled";
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Please enable location services")),
-          );
+          _showSnackBar("Please enable location services", isError: true);
         }
         return;
       }
 
-      // Get position
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
-      );
+      ).timeout(const Duration(seconds: 10));
+
       if (mounted) {
         setState(() {
           _currentPosition = position;
@@ -139,16 +161,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
       }
 
-      // Attempt reverse geocoding with timeout
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(
           position.latitude,
           position.longitude,
         ).timeout(
           const Duration(seconds: 5),
-          onTimeout: () {
-            throw TimeoutException("Geocoding timed out");
-          },
+          onTimeout: () => throw TimeoutException("Geocoding timed out"),
         );
 
         if (placemarks.isNotEmpty && mounted) {
@@ -163,13 +182,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             currentLocation =
                 address.isNotEmpty
                     ? address
-                    : "Location found, but address unavailable (${position.latitude}, ${position.longitude})";
+                    : "Address unavailable (${position.latitude}, ${position.longitude})";
           });
         } else {
           if (mounted) {
             setState(() {
               currentLocation =
-                  "No address found for these coordinates (${position.latitude}, ${position.longitude})";
+                  "No address found (${position.latitude}, ${position.longitude})";
             });
           }
         }
@@ -177,28 +196,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         if (mounted) {
           setState(() {
             currentLocation =
-                "No address found for these coordinates (${position.latitude}, ${position.longitude})";
+                "No address found (${position.latitude}, ${position.longitude})";
           });
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text("Unable to get address: $e")));
+          _showSnackBar("Unable to get address: $e", isError: true);
         }
-        print("Geocoding error: $e");
+        print('Geocoding error: $e');
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           currentLocation = "Error fetching location: $e";
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Location error: $e")));
+        _showSnackBar("Location error: $e", isError: true);
       }
-      print("Error fetching location: $e");
+      print('Error fetching location: $e');
     }
   }
 
-  // Enhanced fetch latest report with status tracking
   Future<void> _fetchLatestReport() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return;
@@ -226,9 +240,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             'timestamp': reportData['timestamp'],
           };
           isEmergencyActive =
-              (reportData['status'] == 'active' ||
-                  reportData['status'] == 'dispatched');
+              reportData['status'] == 'active' ||
+              reportData['status'] == 'dispatched';
         });
+        print('Latest report loaded: $reportId');
       } else {
         if (mounted) {
           setState(() {
@@ -236,39 +251,51 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             isEmergencyActive = false;
           });
         }
+        print('No reports found');
       }
     } catch (e) {
-      print("Error fetching latest report: $e");
       if (mounted) {
         setState(() {
           latestReport = null;
           isEmergencyActive = false;
         });
+        _showSnackBar("Error fetching report: $e", isError: true);
       }
+      print('Error in _fetchLatestReport: $e');
     }
   }
 
-  // Refresh function for pull-down-to-refresh
+  void _showSnackBar(String message, {required bool isError}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: GoogleFonts.poppins(fontSize: 14.sp)),
+        backgroundColor: isError ? Colors.red : Colors.green,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10.r),
+        ),
+      ),
+    );
+    print('SnackBar: $message (isError: $isError)');
+  }
+
   Future<void> _onRefresh() async {
     try {
-      // Run all fetch operations concurrently
       await Future.wait([
         _fetchUserData(),
         _fetchLatestReport(),
         _getCurrentLocation(),
       ]);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Data refreshed successfully")),
-        );
+        _showSnackBar("Data refreshed successfully", isError: false);
       }
+      print('Refresh completed');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Failed to refresh data: $e")));
+        _showSnackBar("Failed to refresh data: $e", isError: true);
       }
-      print("Error during refresh: $e");
+      print('Error during refresh: $e');
     }
   }
 
@@ -278,15 +305,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     });
   }
 
-  // Enhanced widget options with better UI
   List<Widget> get widgetOptions {
     return [
       _buildEnhancedDashboard(),
       latestReport != null
           ? TrackRescuerScreen(
-            reportId: latestReport!['reportId'],
-            emergencyLat: latestReport!['emergencyLat'],
-            emergencyLon: latestReport!['emergencyLon'],
+            reportId: latestReport!['reportId'] as String,
+            emergencyLat: latestReport!['emergencyLat'] as double,
+            emergencyLon: latestReport!['emergencyLon'] as double,
           )
           : _buildNoActiveReport(),
       HistoryScreen(),
@@ -296,7 +322,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildEnhancedDashboard() {
     return Container(
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
@@ -305,11 +331,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       child: RefreshIndicator(
         color: Colors.white,
-        backgroundColor: Color(0xFF1565C0),
+        backgroundColor: const Color(0xFF1565C0),
         onRefresh: _onRefresh,
         child: SingleChildScrollView(
-          physics:
-              const AlwaysScrollableScrollPhysics(), // Ensure scrollable for refresh
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
               _buildEnhancedHeader(),
@@ -328,7 +353,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildEnhancedHeader() {
     return SlideTransition(
-      position: Tween<Offset>(begin: Offset(0, -1), end: Offset.zero).animate(
+      position: Tween<Offset>(
+        begin: const Offset(0, -1),
+        end: Offset.zero,
+      ).animate(
         CurvedAnimation(parent: _slideController, curve: Curves.easeOutBack),
       ),
       child: Container(
@@ -350,21 +378,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         fontWeight: FontWeight.w400,
                       ),
                     ),
-                    Text(
-                      userName.isNotEmpty ? userName : "Emergency User",
-                      style: GoogleFonts.poppins(
-                        fontSize: 24.sp,
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                    _isLoadingUserData
+                        ? Text(
+                          "Loading...",
+                          style: GoogleFonts.poppins(
+                            fontSize: 24.sp,
+                            color: Colors.white70,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                        : Text(
+                          userName.isEmpty ? "Guest" : userName,
+                          style: GoogleFonts.poppins(
+                            fontSize: 24.sp,
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                   ],
                 ),
                 Container(
                   padding: EdgeInsets.all(12.w),
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(50),
+                    borderRadius: BorderRadius.circular(50.r),
                     border: Border.all(color: Colors.white.withOpacity(0.3)),
                   ),
                   child: Icon(
@@ -421,7 +458,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   Container(
                     width: 8.w,
                     height: 8.w,
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: Colors.green,
                       shape: BoxShape.circle,
                     ),
@@ -436,7 +473,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildEmergencyStatus() {
-    if (!isEmergencyActive) return SizedBox.shrink();
+    if (!isEmergencyActive) return const SizedBox.shrink();
 
     return AnimatedBuilder(
       animation: _pulseController,
@@ -461,7 +498,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             children: [
               Container(
                 padding: EdgeInsets.all(8.w),
-                decoration: BoxDecoration(
+                decoration: const BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
                 ),
@@ -533,7 +570,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   icon: Icons.local_hospital,
                   title: "Ambulance",
                   subtitle: "Request",
-                  color: Colors.orange,
+                  color: Colors.blue,
                 ),
               ),
             ],
@@ -549,15 +586,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required String subtitle,
     required Color color,
   }) {
-    // Map titles to indices for SosScreen
     int getIndexForTitle(String title) {
       switch (title) {
         case "Emergency":
-          return 0; // General emergency, maps to Health Care
+          return 0;
         case "Ambulance":
-          return 3; // Maps to Accident
+          return 3;
         default:
-          return 6; // Fallback for general SOS
+          return 6;
       }
     }
 
@@ -581,8 +617,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           boxShadow: [
             BoxShadow(
               color: color.withOpacity(0.3),
-              blurRadius: 10,
-              offset: Offset(0, 4),
+              blurRadius: 10.r,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -628,8 +664,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: Offset(0, 4),
+            blurRadius: 8.r,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
@@ -639,15 +675,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           Text(
             "Emergency Services",
             style: GoogleFonts.poppins(
-              fontSize: 20.sp,
-              color: Color(0xFF1565C0),
-              fontWeight: FontWeight.bold,
+              fontSize: 18.sp,
+              color: const Color(0xFF1565C0),
+              fontWeight: FontWeight.w500,
             ),
           ),
           SizedBox(height: 16.h),
           GridView.count(
             shrinkWrap: true,
-            physics: NeverScrollableScrollPhysics(),
+            physics: const NeverScrollableScrollPhysics(),
             crossAxisCount: 2,
             crossAxisSpacing: 12.w,
             mainAxisSpacing: 12.h,
@@ -656,22 +692,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               _buildServiceCard(
                 icon: Icons.local_hospital,
                 title: "Health Care",
-                color: Color(0xFF4CAF50),
+                color: const Color(0xFF4CAF50),
               ),
               _buildServiceCard(
                 icon: Icons.local_fire_department,
                 title: "Fire & Safety",
-                color: Color(0xFFFF5722),
+                color: const Color(0xFFFF7777),
               ),
               _buildServiceCard(
                 icon: Icons.security,
                 title: "Police",
-                color: Color(0xFF2196F3),
+                color: const Color(0xFF2196F3),
               ),
               _buildServiceCard(
                 icon: Icons.medication,
                 title: "Accident",
-                color: Color(0xFF9C27B0),
+                color: const Color(0xFF9C27B0),
               ),
             ],
           ),
@@ -685,21 +721,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     required String title,
     required Color color,
   }) {
-    // Map titles to indices for SosScreen
-    int getIndexForTitle(String title) {
-      switch (title) {
-        case "Health Care":
-          return 0;
-        case "Fire & Safety":
-          return 2;
-        case "Police":
-          return 1;
-        case "Accident":
-          return 3;
-        default:
-          return 6; // Fallback for general SOS
-      }
-    }
+    Map<String, int> titleToIndex = {
+      'Health Care': 0,
+      'Fire & Safety': 2,
+      'Police': 1,
+      'Accident': 3,
+    };
 
     return GestureDetector(
       onTap: () {
@@ -707,7 +734,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           context,
           MaterialPageRoute(
             builder:
-                (context) => SosScreen(selectedIndex: getIndexForTitle(title)),
+                (context) => SosScreen(selectedIndex: titleToIndex[title] ?? 6),
           ),
         );
       },
@@ -715,30 +742,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         padding: EdgeInsets.all(16.w),
         decoration: BoxDecoration(
           gradient: LinearGradient(
-            colors: [color.withOpacity(0.1), color.withOpacity(0.05)],
+            colors: [color.withOpacity(0.1), Colors.white],
           ),
-          borderRadius: BorderRadius.circular(12.r),
+          borderRadius: BorderRadius.circular(10.r),
           border: Border.all(color: color.withOpacity(0.2)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: EdgeInsets.all(12.w),
+              padding: EdgeInsets.all(10.w),
               decoration: BoxDecoration(
                 color: color.withOpacity(0.1),
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(50.r),
               ),
-              child: Icon(icon, color: color, size: 24.sp),
+              child: Icon(icon, color: Colors.black54, size: 22.sp),
             ),
-            SizedBox(height: 8.h),
+            SizedBox(height: 6.h),
             Text(
               title,
               textAlign: TextAlign.center,
               style: GoogleFonts.poppins(
-                fontSize: 12.sp,
+                fontSize: 11.sp,
                 color: Colors.black87,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ],
@@ -753,12 +780,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       padding: EdgeInsets.all(20.w),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20.r),
+        borderRadius: BorderRadius.circular(10.r),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: Offset(0, 4),
+            color: Colors.grey.withOpacity(0.3),
+            blurRadius: 5.r,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -771,39 +798,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Text(
                 "Recent Activity",
                 style: GoogleFonts.poppins(
-                  fontSize: 18.sp,
-                  color: Color(0xFF1565C0),
-                  fontWeight: FontWeight.bold,
+                  fontSize: 16.sp,
+                  color: const Color(0xFF1565C0),
+                  fontWeight: FontWeight.w500,
                 ),
               ),
               TextButton(
-                onPressed: () => onItemTapped(2), // Navigate to history
+                onPressed: () => onItemTapped(2),
                 child: Text(
                   "View All",
                   style: GoogleFonts.poppins(
-                    fontSize: 12.sp,
-                    color: Color(0xFF1565C0),
-                    fontWeight: FontWeight.w600,
+                    fontSize: 11.sp,
+                    color: const Color(0xFF1565C0),
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 12.h),
-          latestReport != null
-              ? _buildActivityItem()
-              : Center(
+          SizedBox(height: 10.h),
+          latestReport == null
+              ? Center(
                 child: Padding(
-                  padding: EdgeInsets.all(20.w),
+                  padding: EdgeInsets.all(4.w),
                   child: Text(
                     "No recent activity",
                     style: GoogleFonts.poppins(
-                      fontSize: 14.sp,
+                      fontSize: 12.sp,
                       color: Colors.grey,
                     ),
                   ),
                 ),
-              ),
+              )
+              : _buildActivityItem(),
         ],
       ),
     );
@@ -811,22 +838,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildActivityItem() {
     return Container(
-      padding: EdgeInsets.all(12.w),
+      padding: EdgeInsets.all(8.w),
       decoration: BoxDecoration(
-        color: Colors.grey.withOpacity(0.05),
-        borderRadius: BorderRadius.circular(8.r),
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(5.r),
       ),
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(8.w),
+            padding: EdgeInsets.all(6.w),
             decoration: BoxDecoration(
-              color: Colors.blue.withOpacity(0.1),
-              shape: BoxShape.circle,
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(50.r),
             ),
-            child: Icon(Icons.emergency, color: Colors.blue, size: 16.sp),
+            child: Icon(
+              Icons.warning_amber,
+              color: Colors.blue[300],
+              size: 18.sp,
+            ),
           ),
-          SizedBox(width: 12.w),
+          SizedBox(width: 10.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -834,21 +865,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 Text(
                   "Emergency Report",
                   style: GoogleFonts.poppins(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
+                    fontSize: 12.sp,
+                    color: Colors.black87,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 Text(
-                  "Status: ${latestReport!['status'] ?? 'Unknown'}",
+                  "Status: ${latestReport?['status'] ?? 'Unknown'}",
                   style: GoogleFonts.poppins(
-                    fontSize: 12.sp,
+                    fontSize: 11.sp,
                     color: Colors.grey,
                   ),
                 ),
               ],
             ),
           ),
-          Icon(Icons.arrow_forward_ios, size: 12.sp, color: Colors.grey),
+          Icon(Icons.chevron_right, size: 18.sp, color: Colors.grey),
         ],
       ),
     );
@@ -856,43 +888,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   Widget _buildNoActiveReport() {
     return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Colors.blue.shade50, Colors.white],
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-        ),
-      ),
+      color: Colors.grey[200],
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
-              padding: EdgeInsets.all(24.w),
+              padding: EdgeInsets.all(20.w),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                shape: BoxShape.circle,
+                color: Colors.blue[50],
+                borderRadius: BorderRadius.circular(50.r),
               ),
               child: Icon(
                 Icons.location_searching,
-                size: 48.sp,
-                color: Colors.blue,
+                size: 36.sp,
+                color: Colors.blue[700],
               ),
             ),
-            SizedBox(height: 20.h),
+            SizedBox(height: 10.h),
             Text(
-              "No Active Report to Track",
+              "No reports to track",
               style: GoogleFonts.poppins(
-                fontSize: 18.sp,
-                fontWeight: FontWeight.bold,
+                fontSize: 16.sp,
                 color: Colors.black87,
+                fontWeight: FontWeight.w500,
               ),
             ),
-            SizedBox(height: 8.h),
+            SizedBox(height: 4.h),
             Text(
-              "When you submit an emergency report,\nyou'll be able to track it here",
+              "Submit an emergency report to start tracking.",
               textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(fontSize: 14.sp, color: Colors.grey),
+              style: GoogleFonts.poppins(fontSize: 12.sp, color: Colors.grey),
             ),
           ],
         ),
@@ -906,11 +932,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       body: SafeArea(child: widgetOptions[selectedIndex]),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
+          color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: Offset(0, -5),
+              color: Colors.grey.withOpacity(0.2),
+              blurRadius: 5.r,
+              offset: const Offset(0, -2),
             ),
           ],
         ),
@@ -918,75 +945,65 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           items: [
             BottomNavigationBarItem(
               icon: Container(
-                padding: EdgeInsets.all(8.w),
+                padding: EdgeInsets.all(6.w),
                 decoration: BoxDecoration(
                   color:
-                      selectedIndex == 0
-                          ? Color(0xFF1565C0).withOpacity(0.1)
-                          : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8.r),
+                      selectedIndex == 0 ? Colors.blue[50] : Colors.transparent,
+                  borderRadius: BorderRadius.circular(5.r),
                 ),
-                child: Icon(Icons.local_hospital, size: 20.sp),
+                child: Icon(Icons.local_hospital, size: 18.sp),
               ),
-              label: 'Emergency',
+              label: "Emergency",
             ),
             BottomNavigationBarItem(
               icon: Container(
-                padding: EdgeInsets.all(8.w),
+                padding: EdgeInsets.all(6.w),
                 decoration: BoxDecoration(
                   color:
-                      selectedIndex == 1
-                          ? Color(0xFF1565C0).withOpacity(0.1)
-                          : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8.r),
+                      selectedIndex == 1 ? Colors.blue[50] : Colors.transparent,
+                  borderRadius: BorderRadius.circular(5.r),
                 ),
-                child: Icon(Icons.location_on, size: 20.sp),
+                child: Icon(Icons.location_on, size: 18.sp),
               ),
-              label: 'Track',
+              label: "Track",
             ),
             BottomNavigationBarItem(
               icon: Container(
-                padding: EdgeInsets.all(8.w),
+                padding: EdgeInsets.all(6.w),
                 decoration: BoxDecoration(
                   color:
-                      selectedIndex == 2
-                          ? Color(0xFF1565C0).withOpacity(0.1)
-                          : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8.r),
+                      selectedIndex == 2 ? Colors.blue[50] : Colors.transparent,
+                  borderRadius: BorderRadius.circular(5.r),
                 ),
-                child: Icon(Icons.history, size: 20.sp),
+                child: Icon(Icons.history, size: 18.sp),
               ),
-              label: 'History',
+              label: "History",
             ),
             BottomNavigationBarItem(
               icon: Container(
-                padding: EdgeInsets.all(8.w),
+                padding: EdgeInsets.all(6.w),
                 decoration: BoxDecoration(
                   color:
-                      selectedIndex == 3
-                          ? Color(0xFF1565C0).withOpacity(0.1)
-                          : Colors.transparent,
-                  borderRadius: BorderRadius.circular(8.r),
+                      selectedIndex == 3 ? Colors.blue[50] : Colors.transparent,
+                  borderRadius: BorderRadius.circular(5.r),
                 ),
-                child: Icon(Icons.person, size: 20.sp),
+                child: Icon(Icons.person, size: 18.sp),
               ),
-              label: 'Profile',
+              label: "Profile",
             ),
           ],
           currentIndex: selectedIndex,
           onTap: onItemTapped,
           type: BottomNavigationBarType.fixed,
-          selectedItemColor: Color(0xFF1565C0),
+          selectedItemColor: const Color(0xFF1565C0),
           unselectedItemColor: Colors.grey,
-          backgroundColor: Colors.white,
-          elevation: 0,
           selectedLabelStyle: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 12.sp,
+            fontWeight: FontWeight.w500,
+            fontSize: 11.sp,
           ),
           unselectedLabelStyle: GoogleFonts.poppins(
-            fontWeight: FontWeight.w500,
-            fontSize: 12.sp,
+            fontWeight: FontWeight.w400,
+            fontSize: 11.sp,
           ),
         ),
       ),

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:emergency_app/screens/home_screen.dart';
-import 'package:emergency_app/screens/track_rescue.dart'; // Adjust path as needed
+import 'package:emergency_app/screens/track_rescue.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,8 +15,9 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 
+// SosScreen: Stateful widget for emergency reporting
 class SosScreen extends StatefulWidget {
-  final int? selectedIndex;
+  final int? selectedIndex; // Optional index for preselected emergency type
 
   const SosScreen({Key? key, this.selectedIndex}) : super(key: key);
 
@@ -24,12 +25,15 @@ class SosScreen extends StatefulWidget {
   _SosScreenState createState() => _SosScreenState();
 }
 
+// _SosScreenState: Manages state for SosScreen, animations, and data
 class _SosScreenState extends State<SosScreen>
     with SingleTickerProviderStateMixin {
-  int selectedIndex = -1;
-  String currentLocation = "Fetching location...";
-  String notes = "";
-  Position? _currentPosition;
+  // State variables
+  int selectedIndex = -1; // Tracks selected emergency type
+  String currentLocation = "Fetching location..."; // Displays current location
+  String notes = ""; // User-entered notes
+  Position? _currentPosition; // Stores GPS coordinates
+  // Emergency type options with icons, labels, and colors
   List<Map<String, dynamic>> gridItems = [
     {
       'icon': Icons.medical_services_rounded,
@@ -56,28 +60,31 @@ class _SosScreenState extends State<SosScreen>
     {'icon': Icons.sos_rounded, 'label': 'SOS', 'color': Colors.red},
   ];
 
-  List<Map<String, dynamic>> mediaItems = [];
-  late AnimationController _animationController;
-  late Animation<double> _scaleAnimation;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
+  List<Map<String, dynamic>> mediaItems =
+      []; // Stores selected media (images/videos)
+  late AnimationController _animationController; // Controls animations
+  late Animation<double> _scaleAnimation; // Scale animation for buttons
+  late Animation<double> _fadeAnimation; // Fade animation for content
+  late Animation<Offset> _slideAnimation; // Slide animation for header
 
-  // Cloudinary configuration
+  // Cloudinary configuration for media upload
   final String cloudName = 'dsojq0cm2';
   final String uploadPreset = 'ml_default';
 
   @override
   void initState() {
     super.initState();
+    // Set initial selected index if provided
     if (widget.selectedIndex != null) {
       selectedIndex = widget.selectedIndex!;
     }
 
-    // Request all necessary permissions when the screen is mounted
+    // Request permissions if widget is mounted
     if (mounted) {
       _requestNecessaryPermissions();
     }
 
+    // Initialize animations
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -100,14 +107,16 @@ class _SosScreenState extends State<SosScreen>
 
   @override
   void dispose() {
+    // Clean up animation controller
     _animationController.dispose();
     super.dispose();
   }
 
+  // Request location and camera permissions
   Future<void> _requestNecessaryPermissions() async {
     if (!mounted) return;
 
-    // Request Location Permission
+    // Check and request location permission
     var locationStatus = await Permission.location.status;
     if (locationStatus.isDenied) {
       if (await Permission.location.request().isGranted) {
@@ -117,7 +126,13 @@ class _SosScreenState extends State<SosScreen>
           currentLocation = "Location permission denied";
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Please grant location permission")),
+          SnackBar(
+            content: Text(
+              "Please grant location permission",
+              style: GoogleFonts.poppins(fontSize: 15.sp),
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } else if (locationStatus.isGranted) {
@@ -127,47 +142,49 @@ class _SosScreenState extends State<SosScreen>
         currentLocation = "Location permission permanently denied";
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enable location in app settings")),
+        SnackBar(
+          content: Text(
+            "Please enable location in app settings",
+            style: GoogleFonts.poppins(fontSize: 15.sp),
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
       await openAppSettings();
     }
 
-    // Request Camera Permission
+    // Check and request camera permission
     var cameraStatus = await Permission.camera.status;
     if (cameraStatus.isDenied) {
       if (await Permission.camera.request().isDenied) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Camera permission denied")),
+          SnackBar(
+            content: Text(
+              "Camera permission denied",
+              style: GoogleFonts.poppins(fontSize: 15.sp),
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } else if (cameraStatus.isPermanentlyDenied) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enable camera in app settings")),
-      );
-      await openAppSettings();
-    }
-
-    // Request Storage Permission
-    var storageStatus =
-        await Permission.photos.status; // Updated for modern Android
-    if (storageStatus.isDenied) {
-      if (await Permission.photos.request().isDenied) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Photo access permission denied")),
-        );
-      }
-    } else if (storageStatus.isPermanentlyDenied) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Please enable photo access in app settings"),
+        SnackBar(
+          content: Text(
+            "Please enable camera in app settings",
+            style: GoogleFonts.poppins(fontSize: 15.sp),
+          ),
+          backgroundColor: Colors.red,
         ),
       );
       await openAppSettings();
     }
   }
 
+  // Fetch current location using Geolocator
   Future<void> _getCurrentLocation() async {
     try {
+      // Check if location services are enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted) {
@@ -175,18 +192,23 @@ class _SosScreenState extends State<SosScreen>
             currentLocation = "Location services are disabled";
           });
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Please enable location services")),
+            SnackBar(
+              content: Text(
+                "Please enable location services",
+                style: GoogleFonts.poppins(fontSize: 15.sp),
+              ),
+              backgroundColor: Colors.red,
+            ),
           );
         }
         return;
       }
 
+      // Get current position
       Position position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: const Duration(seconds: 10),
-      ).catchError((e) {
-        throw Exception("Failed to get location: $e");
-      });
+      );
 
       if (mounted) {
         setState(() {
@@ -196,6 +218,7 @@ class _SosScreenState extends State<SosScreen>
         });
       }
 
+      // Convert coordinates to address
       try {
         List<Placemark> placemarks = await placemarkFromCoordinates(
           position.latitude,
@@ -236,9 +259,15 @@ class _SosScreenState extends State<SosScreen>
             currentLocation =
                 "Address unavailable (${position.latitude}, ${position.longitude})";
           });
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text("Unable to get address: $e")));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                "Unable to get address: $e",
+                style: GoogleFonts.poppins(fontSize: 15.sp),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     } catch (e) {
@@ -246,121 +275,182 @@ class _SosScreenState extends State<SosScreen>
         setState(() {
           currentLocation = "Error fetching location: $e";
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Location error: $e")));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Location error: $e",
+              style: GoogleFonts.poppins(fontSize: 15.sp),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
 
-  Future<void> _pickMedia(ImageSource source, {bool isVideo = false}) async {
-    final ImagePicker picker = ImagePicker();
+  // Pick media (image or video) from camera or gallery
+  Future<void> _pickMediaFromSource(
+    ImageSource source, {
+    bool isVideo = false,
+  }) async {
+    final picker = ImagePicker();
 
-    // Re-check permissions before picking media
+    // Check camera permission if source is camera
     if (source == ImageSource.camera) {
-      var cameraStatus = await Permission.camera.status;
-      if (!cameraStatus.isGranted) {
-        cameraStatus = await Permission.camera.request();
-        if (!cameraStatus.isGranted) {
+      var status = await Permission.camera.status;
+      if (status.isDenied) {
+        status = await Permission.camera.request();
+        if (status.isDenied || status.isPermanentlyDenied) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Camera permission denied")),
+              SnackBar(
+                content: Text(
+                  'Camera permission is required.',
+                  style: GoogleFonts.poppins(fontSize: 15.sp),
+                ),
+                backgroundColor: Colors.red,
+              ),
             );
           }
-          return;
-        }
-      }
-    } else {
-      var storageStatus = await Permission.photos.status;
-      if (!storageStatus.isGranted) {
-        storageStatus = await Permission.photos.request();
-        if (!storageStatus.isGranted) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Photo access permission denied")),
-            );
-          }
+          print('Camera permission denied: $status');
           return;
         }
       }
     }
 
     try {
+      print('Launching media picker for: $source, isVideo: $isVideo');
+      XFile? media;
       if (source == ImageSource.camera) {
         if (isVideo) {
-          final XFile? video = await picker.pickVideo(source: source);
-          if (video != null && mounted) {
-            setState(() {
-              mediaItems.add({'file': File(video.path), 'isVideo': true});
-            });
-          }
+          media = await picker.pickVideo(source: source);
         } else {
-          final XFile? image = await picker.pickImage(source: source);
-          if (image != null && mounted) {
-            setState(() {
-              mediaItems.add({'file': File(image.path), 'isVideo': false});
-            });
-          }
+          media = await picker.pickImage(
+            source: source,
+            maxWidth: 512,
+            maxHeight: 512,
+            imageQuality: 80,
+          );
         }
       } else {
-        try {
-          final List<XFile> media = await picker.pickMultipleMedia();
-          if (media.isNotEmpty && mounted) {
-            setState(() {
-              for (var item in media) {
-                mediaItems.add({
-                  'file': File(item.path),
-                  'isVideo': item.mimeType?.contains('video') ?? false,
-                });
-              }
-            });
-          }
-        } catch (e) {
-          final XFile? image = await picker.pickImage(source: source);
-          if (image != null && mounted) {
-            setState(() {
-              mediaItems.add({'file': File(image.path), 'isVideo': false});
-            });
-          }
+        media = await picker.pickImage(
+          source: source,
+          maxWidth: 512,
+          maxHeight: 512,
+          imageQuality: 80,
+        );
+      }
+
+      // Handle no media selected
+      if (media == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'No media selected',
+                style: GoogleFonts.poppins(fontSize: 15.sp),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
+        print('No media selected');
+        return;
+      }
+
+      // Verify file exists
+      File mediaFile = File(media.path);
+      if (!await mediaFile.exists()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Selected media file does not exist',
+                style: GoogleFonts.poppins(fontSize: 15.sp),
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        print('Media file does not exist: ${media.path}');
+        return;
+      }
+
+      // Add media to list
+      if (mounted) {
+        setState(() {
+          mediaItems.add({'file': mediaFile, 'isVideo': isVideo});
+        });
+        print('Media added: ${media.path}, isVideo: $isVideo');
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error picking media: ${e.toString()}")),
+          SnackBar(
+            content: Text(
+              'Error picking media: $e',
+              style: GoogleFonts.poppins(fontSize: 15.sp),
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
+      print('Error in _pickMediaFromSource: $e');
     }
   }
 
+  // Remove media from list
   void _removeMedia(int index) {
     if (mounted) {
       setState(() {
         mediaItems.removeAt(index);
       });
+      print('Media removed at index: $index');
     }
   }
 
+  // Submit emergency report to Cloudinary and Firebase
   Future<void> _submitReport() async {
+    // Validate emergency type
     if (selectedIndex == -1) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please select an emergency type")),
+        SnackBar(
+          content: Text(
+            "Please select an emergency type",
+            style: GoogleFonts.poppins(fontSize: 15.sp),
+          ),
+          backgroundColor: Colors.red,
+        ),
       );
       return;
     }
 
+    // Validate location
     if (_currentPosition == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Location not available")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Location not available",
+            style: GoogleFonts.poppins(fontSize: 15.sp),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
+    // Validate user authentication
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("User not authenticated")));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "User not authenticated",
+            style: GoogleFonts.poppins(fontSize: 15.sp),
+          ),
+          backgroundColor: Colors.red,
+        ),
+      );
       return;
     }
 
@@ -382,21 +472,27 @@ class _SosScreenState extends State<SosScreen>
                   await http.MultipartFile.fromPath('file', file.path),
                 );
 
+          print('Uploading to Cloudinary: ${file.path}');
           var response = await request.send();
           var responseBody = await response.stream.bytesToString();
           var data = json.decode(responseBody);
 
+          print(
+            'Cloudinary response: status=${response.statusCode}, body=$responseBody',
+          );
+
           if (response.statusCode == 200) {
             mediaUrls.add(data['secure_url']);
+            print('Upload successful: ${data['secure_url']}');
           } else {
             print('Cloudinary upload error: ${data['error']['message']}');
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                backgroundColor: Colors.red,
                 content: Text(
                   'Failed to upload media: ${data['error']['message']}',
                   style: GoogleFonts.poppins(fontSize: 15.sp),
                 ),
+                backgroundColor: Colors.red,
               ),
             );
             return;
@@ -405,11 +501,11 @@ class _SosScreenState extends State<SosScreen>
           print('Cloudinary upload exception: $e');
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              backgroundColor: Colors.red,
               content: Text(
                 'Failed to upload media. Please try again.',
                 style: GoogleFonts.poppins(fontSize: 15.sp),
               ),
+              backgroundColor: Colors.red,
             ),
           );
           return;
@@ -432,6 +528,7 @@ class _SosScreenState extends State<SosScreen>
         'notes': notes,
         'assignedRescuer': {},
       });
+      print('Report saved to Realtime Database: ${reportRef.key}');
 
       // Save report to Firestore
       final firestore = FirebaseFirestore.instance;
@@ -452,16 +549,20 @@ class _SosScreenState extends State<SosScreen>
               'address': currentLocation,
             },
           }, SetOptions(merge: true));
+      print('Report saved to Firestore: ${reportRef.key}');
 
-      // Show confirmation
+      // Show success and navigate to TrackRescuerScreen
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Emergency report submitted successfully"),
+          SnackBar(
+            content: Text(
+              "Emergency report submitted successfully",
+              style: GoogleFonts.poppins(fontSize: 15.sp),
+            ),
+            backgroundColor: Colors.green,
           ),
         );
 
-        // Navigate to TrackRescuerScreen
         Navigator.push(
           context,
           MaterialPageRoute(
@@ -477,12 +578,20 @@ class _SosScreenState extends State<SosScreen>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Error submitting report: ${e.toString()}")),
+          SnackBar(
+            content: Text(
+              "Error submitting report: $e",
+              style: GoogleFonts.poppins(fontSize: 15.sp),
+            ),
+            backgroundColor: Colors.red,
+          ),
         );
       }
+      print('Error in _submitReport: $e');
     }
   }
 
+  // Build the main UI
   @override
   Widget build(BuildContext context) {
     String selectedCategory =
@@ -503,7 +612,7 @@ class _SosScreenState extends State<SosScreen>
         child: SafeArea(
           child: Column(
             children: [
-              // Premium Header
+              // Header with back button and title
               SlideTransition(
                 position: _slideAnimation,
                 child: Container(
@@ -594,8 +703,7 @@ class _SosScreenState extends State<SosScreen>
                   ),
                 ),
               ),
-
-              // Main Content
+              // Main content
               Expanded(
                 child: FadeTransition(
                   opacity: _fadeAnimation,
@@ -608,12 +716,79 @@ class _SosScreenState extends State<SosScreen>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Emergency Type Section
+                          // Emergency type selection
                           _buildSectionHeader(
                             "Emergency Type",
                             Icons.category_rounded,
                           ),
                           SizedBox(height: 12.h),
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                                  crossAxisCount: 4,
+                                  crossAxisSpacing: 8.w,
+                                  mainAxisSpacing: 8.h,
+                                  childAspectRatio: 0.8,
+                                ),
+                            itemCount: gridItems.length,
+                            itemBuilder: (context, index) {
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    selectedIndex = index;
+                                  });
+                                },
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color:
+                                        selectedIndex == index
+                                            ? gridItems[index]['color']
+                                                .withOpacity(0.1)
+                                            : Colors.white,
+                                    borderRadius: BorderRadius.circular(12.r),
+                                    border: Border.all(
+                                      color:
+                                          selectedIndex == index
+                                              ? gridItems[index]['color']
+                                              : Colors.grey.shade300,
+                                      width: 2,
+                                    ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: Colors.grey.withOpacity(0.1),
+                                        blurRadius: 5,
+                                        offset: const Offset(0, 3),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        gridItems[index]['icon'],
+                                        color: gridItems[index]['color'],
+                                        size: 24.sp,
+                                      ),
+                                      SizedBox(height: 4.h),
+                                      Text(
+                                        gridItems[index]['label'],
+                                        style: GoogleFonts.poppins(
+                                          fontSize: 12.sp,
+                                          fontWeight: FontWeight.w600,
+                                          color: gridItems[index]['color'],
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          SizedBox(height: 12.h),
+                          // Selected emergency type display
                           Container(
                             padding: EdgeInsets.all(16.w),
                             decoration: BoxDecoration(
@@ -723,10 +898,8 @@ class _SosScreenState extends State<SosScreen>
                               ],
                             ),
                           ),
-
                           SizedBox(height: 28.h),
-
-                          // Location Section
+                          // Location section
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -862,10 +1035,8 @@ class _SosScreenState extends State<SosScreen>
                               ],
                             ),
                           ),
-
                           SizedBox(height: 28.h),
-
-                          // Media Section
+                          // Media section
                           _buildSectionHeader(
                             "Evidence & Media",
                             Icons.photo_camera_rounded,
@@ -873,10 +1044,8 @@ class _SosScreenState extends State<SosScreen>
                           ),
                           SizedBox(height: 12.h),
                           _buildPremiumMediaSection(),
-
                           SizedBox(height: 28.h),
-
-                          // Notes Section
+                          // Notes section
                           _buildSectionHeader(
                             "Additional Details",
                             Icons.notes_rounded,
@@ -938,10 +1107,8 @@ class _SosScreenState extends State<SosScreen>
                               ),
                             ),
                           ),
-
                           SizedBox(height: 32.h),
-
-                          // Submit Button
+                          // Submit button
                           Container(
                             width: double.infinity,
                             height: 60.h,
@@ -1008,7 +1175,6 @@ class _SosScreenState extends State<SosScreen>
                               ),
                             ),
                           ),
-
                           SizedBox(height: 24.h),
                         ],
                       ),
@@ -1023,6 +1189,7 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // Build section header widget
   Widget _buildSectionHeader(
     String title,
     IconData icon, {
@@ -1079,6 +1246,7 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // Build media selection section
   Widget _buildPremiumMediaSection() {
     return Container(
       padding: EdgeInsets.all(20.w),
@@ -1096,7 +1264,7 @@ class _SosScreenState extends State<SosScreen>
       ),
       child: Column(
         children: [
-          // Media Upload Options
+          // Media buttons
           Row(
             children: [
               Expanded(
@@ -1104,7 +1272,7 @@ class _SosScreenState extends State<SosScreen>
                   icon: Icons.camera_alt_rounded,
                   label: "Camera",
                   color: Colors.blue,
-                  onTap: () => _pickMedia(ImageSource.camera),
+                  onTap: () => _pickMediaFromSource(ImageSource.camera),
                 ),
               ),
               SizedBox(width: 12.w),
@@ -1113,7 +1281,11 @@ class _SosScreenState extends State<SosScreen>
                   icon: Icons.videocam_rounded,
                   label: "Video",
                   color: Colors.red,
-                  onTap: () => _pickMedia(ImageSource.camera, isVideo: true),
+                  onTap:
+                      () => _pickMediaFromSource(
+                        ImageSource.camera,
+                        isVideo: true,
+                      ),
                 ),
               ),
               SizedBox(width: 12.w),
@@ -1122,12 +1294,12 @@ class _SosScreenState extends State<SosScreen>
                   icon: Icons.photo_library_rounded,
                   label: "Gallery",
                   color: Colors.green,
-                  onTap: () => _pickMedia(ImageSource.gallery),
+                  onTap: () => _pickMediaFromSource(ImageSource.gallery),
                 ),
               ),
             ],
           ),
-
+          // Display attached media
           if (mediaItems.isNotEmpty) ...[
             SizedBox(height: 20.h),
             Container(
@@ -1143,8 +1315,6 @@ class _SosScreenState extends State<SosScreen>
               ),
             ),
             SizedBox(height: 20.h),
-
-            // Media Preview Grid
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1184,16 +1354,14 @@ class _SosScreenState extends State<SosScreen>
               ],
             ),
           ] else ...[
+            // Empty media state
             SizedBox(height: 20.h),
             Container(
               padding: EdgeInsets.all(24.w),
               decoration: BoxDecoration(
                 color: Colors.grey.shade50,
                 borderRadius: BorderRadius.circular(16.r),
-                border: Border.all(
-                  color: Colors.grey.shade200,
-                  style: BorderStyle.solid,
-                ),
+                border: Border.all(color: Colors.grey.shade400),
               ),
               child: Column(
                 children: [
@@ -1237,6 +1405,7 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // Build media button widget
   Widget _buildMediaButton({
     required IconData icon,
     required String label,
@@ -1290,6 +1459,7 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // Build media preview widget
   Widget _buildMediaPreview(int index) {
     final media = mediaItems[index];
     final file = media['file'] as File;
@@ -1333,7 +1503,7 @@ class _SosScreenState extends State<SosScreen>
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stackTrace) {
                           return Container(
-                            color: Colors.grey.shade300,
+                            color: Colors.grey.shade400,
                             child: Icon(
                               Icons.broken_image_rounded,
                               color: Colors.grey.shade500,
@@ -1344,8 +1514,6 @@ class _SosScreenState extends State<SosScreen>
                       ),
             ),
           ),
-
-          // Media Type Badge
           Positioned(
             top: 6.h,
             left: 6.w,
@@ -1376,8 +1544,6 @@ class _SosScreenState extends State<SosScreen>
               ),
             ),
           ),
-
-          // Remove Button
           Positioned(
             top: 6.h,
             right: 6.w,
@@ -1390,10 +1556,7 @@ class _SosScreenState extends State<SosScreen>
                   borderRadius: BorderRadius.circular(20.r),
                   boxShadow: [
                     BoxShadow(
-                      color:
-                          Colors
-                              .red
-                              .shade200, // Fixed typo: Colors.red区别 to Colors.red.shade200
+                      color: Colors.red.shade200,
                       blurRadius: 4,
                       offset: const Offset(0, 2),
                     ),
@@ -1412,6 +1575,7 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // Show location settings drawer
   void _showLocationDrawer(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -1436,7 +1600,6 @@ class _SosScreenState extends State<SosScreen>
             ),
             child: Column(
               children: [
-                // Handle Bar
                 Container(
                   margin: EdgeInsets.only(top: 12.h),
                   width: 50.w,
@@ -1446,8 +1609,6 @@ class _SosScreenState extends State<SosScreen>
                     borderRadius: BorderRadius.circular(2.r),
                   ),
                 ),
-
-                // Header
                 Container(
                   padding: EdgeInsets.all(20.w),
                   child: Row(
@@ -1458,7 +1619,7 @@ class _SosScreenState extends State<SosScreen>
                           gradient: LinearGradient(
                             colors: [
                               Colors.blue.shade500,
-                              Colors.blue.shade700,
+                              Colors.blue.shade300,
                             ],
                           ),
                           borderRadius: BorderRadius.circular(12.r),
@@ -1475,15 +1636,15 @@ class _SosScreenState extends State<SosScreen>
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              "Location Settings",
+                              'Location Settings',
                               style: GoogleFonts.poppins(
                                 fontSize: 18.sp,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w600,
                                 color: Colors.black87,
                               ),
                             ),
                             Text(
-                              "Manage your emergency location",
+                              'Manage your emergency location',
                               style: GoogleFonts.poppins(
                                 fontSize: 12.sp,
                                 color: Colors.grey.shade600,
@@ -1510,8 +1671,6 @@ class _SosScreenState extends State<SosScreen>
                     ],
                   ),
                 ),
-
-                // Current Location Card
                 Container(
                   margin: EdgeInsets.symmetric(horizontal: 20.w),
                   padding: EdgeInsets.all(16.w),
@@ -1519,7 +1678,7 @@ class _SosScreenState extends State<SosScreen>
                     gradient: LinearGradient(
                       colors: [Colors.green.shade50, Colors.green.shade100],
                     ),
-                    borderRadius: BorderRadius.circular(16.r),
+                    borderRadius: BorderRadius.circular(12.r),
                     border: Border.all(
                       color: Colors.green.shade200,
                       width: 1.5,
@@ -1544,7 +1703,7 @@ class _SosScreenState extends State<SosScreen>
                           ),
                           SizedBox(width: 12.w),
                           Text(
-                            "Current Location",
+                            'Current Location',
                             style: GoogleFonts.poppins(
                               fontSize: 14.sp,
                               fontWeight: FontWeight.w600,
@@ -1565,18 +1724,15 @@ class _SosScreenState extends State<SosScreen>
                     ],
                   ),
                 ),
-
                 SizedBox(height: 24.h),
-
-                // Action Buttons
                 Container(
                   margin: EdgeInsets.symmetric(horizontal: 20.w),
                   child: Column(
                     children: [
                       _buildLocationActionButton(
                         icon: Icons.refresh_rounded,
-                        title: "Refresh Location",
-                        subtitle: "Get current GPS coordinates",
+                        title: 'Refresh Location',
+                        subtitle: 'Get current GPS coordinates',
                         color: Colors.blue,
                         onTap: () {
                           Navigator.pop(context);
@@ -1586,8 +1742,8 @@ class _SosScreenState extends State<SosScreen>
                       SizedBox(height: 16.h),
                       _buildLocationActionButton(
                         icon: Icons.settings_rounded,
-                        title: "Location Settings",
-                        subtitle: "Open device settings",
+                        title: 'Location Settings',
+                        subtitle: 'Open device settings',
                         color: Colors.orange,
                         onTap: () {
                           Navigator.pop(context);
@@ -1597,10 +1753,7 @@ class _SosScreenState extends State<SosScreen>
                     ],
                   ),
                 ),
-
                 SizedBox(height: 24.h),
-
-                // GPS Accuracy Info
                 Container(
                   margin: EdgeInsets.symmetric(horizontal: 20.w),
                   padding: EdgeInsets.all(16.w),
@@ -1619,7 +1772,7 @@ class _SosScreenState extends State<SosScreen>
                       SizedBox(width: 12.w),
                       Expanded(
                         child: Text(
-                          "For emergency response, we use high-accuracy GPS to ensure rescuers can find you quickly.",
+                          'For emergency response, we use high-accuracy GPS to ensure rescuers can find you quickly.',
                           style: GoogleFonts.poppins(
                             fontSize: 12.sp,
                             color: Colors.blue.shade700,
@@ -1636,6 +1789,7 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // Build location action button widget
   Widget _buildLocationActionButton({
     required IconData icon,
     required String title,

@@ -9,7 +9,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:flutter/services.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -46,7 +45,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   DateTime? _lastUpdated;
   bool _emergencyMode = false;
 
-  // Cloudinary configuration (replace with your credentials)
+  // Cloudinary configuration
   final String cloudName = 'dsojq0cm2';
   final String uploadPreset = 'ml_default';
 
@@ -87,7 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     User? user = _auth.currentUser;
     if (user == null) {
       if (mounted) _showSnackBar('User not authenticated', isError: true);
-      print('Error: User not authenticated'); // Debug log
+      print('Error: User not authenticated');
       return;
     }
 
@@ -112,117 +111,56 @@ class _ProfileScreenState extends State<ProfileScreen>
             _lastUpdated = (data['updatedAt'] as Timestamp?)?.toDate();
             _isLoading = false;
           });
-          print('User data loaded successfully'); // Debug log
+          print('User data loaded successfully');
         }
       } else {
         setState(() => _isLoading = false);
-        print('No user data found in Firestore'); // Debug log
+        print('No user data found in Firestore');
       }
     } catch (e) {
       if (mounted) {
         _showSnackBar('Error loading profile: $e', isError: true);
         setState(() => _isLoading = false);
       }
-      print('Error in _loadUserData: $e'); // Debug log
+      print('Error in _loadUserData: $e');
     }
   }
 
-  Future<bool> _requestPermission(ImageSource source) async {
-    Permission permission =
-        source == ImageSource.camera ? Permission.camera : Permission.photos;
-
-    print('Requesting permission: $permission'); // Debug log
-    var status = await permission.status;
-    print('Initial permission status: $status'); // Debug log
-
-    if (!status.isGranted) {
-      try {
-        status = await permission.request();
-        print('Permission request result: $status'); // Debug log
-      } catch (e) {
-        if (mounted)
-          _showSnackBar('Error requesting permission: $e', isError: true);
-        print('Error requesting permission: $e'); // Debug log
-        return false;
-      }
-    }
-
-    if (status.isPermanentlyDenied && mounted) {
-      print('Permission permanently denied'); // Debug log
-      _showSnackBar(
-        'Please enable ${source == ImageSource.camera ? 'camera' : 'gallery'} access in settings.',
-        isError: true,
-      );
-      await openAppSettings();
-      return false;
-    } else if (status.isDenied && mounted) {
-      print('Permission denied'); // Debug log
-      _showSnackBar(
-        '${source == ImageSource.camera ? 'Camera' : 'Gallery'} permission denied.',
-        isError: true,
-      );
-      return false;
-    }
-
-    print('Permission granted: $status'); // Debug log
-    return status.isGranted;
-  }
-
-  Future<void> _pickImage(ImageSource source) async {
-    try {
-      print('Initiating image pick from: $source'); // Debug log
-      bool permissionGranted = await _requestPermission(source);
-      if (!permissionGranted) {
-        print('Permission not granted for $source'); // Debug log
-        return;
-      }
-
-      print('Launching image picker for: $source'); // Debug log
-      XFile? image;
-      try {
-        image = await _picker.pickImage(
-          source: source,
-          maxWidth: 512,
-          maxHeight: 512,
-          imageQuality: 80,
-        );
-      } on PlatformException catch (e) {
-        if (mounted) {
-          String errorMsg =
-              'Error accessing ${source == ImageSource.camera ? 'camera' : 'gallery'}: ${e.message}';
-          if (e.code == 'camera_access_denied') {
-            errorMsg = 'Camera access denied. Please enable in settings.';
-          } else if (e.code == 'photo_access_denied') {
-            errorMsg = 'Gallery access denied. Please enable in settings.';
+  Future<void> _pickImageFromSource(ImageSource source) async {
+    if (source == ImageSource.camera) {
+      var status = await Permission.camera.status;
+      if (status.isDenied) {
+        status = await Permission.camera.request();
+        if (status.isDenied || status.isPermanentlyDenied) {
+          if (mounted) {
+            _showSnackBar('Camera permission is required.', isError: true);
           }
-          _showSnackBar(errorMsg, isError: true);
+          print('Camera permission denied: $status');
+          return;
         }
-        print(
-          'PlatformException in image picker: code=${e.code}, message=${e.message}',
-        ); // Debug log
-        return;
-      } catch (e) {
-        if (mounted)
-          _showSnackBar(
-            'Unexpected error accessing ${source == ImageSource.camera ? 'camera' : 'gallery'}: $e',
-            isError: true,
-          );
-        print('Unexpected error in image picker: $e'); // Debug log
-        return;
       }
+    }
 
-      if (image == null || image.path.isEmpty) {
+    try {
+      print('Launching image picker for: $source');
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 80,
+      );
+
+      if (image == null) {
         if (mounted) _showSnackBar('No image selected', isError: true);
-        print('No image selected or empty path'); // Debug log
+        print('No image selected');
         return;
       }
 
-      print('Image selected: ${image.path}'); // Debug log
       File imageFile = File(image.path);
       if (!await imageFile.exists()) {
         if (mounted)
           _showSnackBar('Selected image file does not exist', isError: true);
-        print('Image file does not exist: ${image.path}'); // Debug log
+        print('Image file does not exist: ${image.path}');
         return;
       }
 
@@ -247,14 +185,14 @@ class _ProfileScreenState extends State<ProfileScreen>
         _showSnackBar('Error selecting image: $e', isError: true);
         setState(() => _isLoading = false);
       }
-      print('Error in _pickImage: $e'); // Debug log
+      print('Error in _pickImageFromSource: $e');
     }
   }
 
   Future<String?> _uploadImageToCloudinary(File image) async {
     if (!await image.exists()) {
       if (mounted) _showSnackBar('Invalid image file', isError: true);
-      print('Error: Image file does not exist'); // Debug log
+      print('Error: Image file does not exist');
       return null;
     }
 
@@ -262,14 +200,14 @@ class _ProfileScreenState extends State<ProfileScreen>
         uploadPreset == 'your_upload_preset') {
       if (mounted)
         _showSnackBar('Invalid Cloudinary credentials', isError: true);
-      print('Error: Invalid Cloudinary credentials'); // Debug log
+      print('Error: Invalid Cloudinary credentials');
       return null;
     }
 
     try {
       print(
         'Uploading to Cloudinary: cloudName=$cloudName, uploadPreset=$uploadPreset',
-      ); // Debug log
+      );
       var request = http.MultipartRequest(
         'POST',
         Uri.parse('https://api.cloudinary.com/v1_1/$cloudName/image/upload'),
@@ -277,18 +215,18 @@ class _ProfileScreenState extends State<ProfileScreen>
       request.fields['upload_preset'] = uploadPreset;
       request.files.add(await http.MultipartFile.fromPath('file', image.path));
 
-      print('Sending Cloudinary request'); // Debug log
+      print('Sending Cloudinary request');
       var response = await request.send();
       var responseBody = await response.stream.bytesToString();
 
       print(
         'Cloudinary response: status=${response.statusCode}, body=$responseBody',
-      ); // Debug log
+      );
 
       try {
         var data = jsonDecode(responseBody);
         if (response.statusCode == 200 && data['secure_url'] != null) {
-          print('Upload successful: ${data['secure_url']}'); // Debug log
+          print('Upload successful: ${data['secure_url']}');
           return data['secure_url'] as String;
         } else {
           String error = 'Upload failed';
@@ -298,18 +236,18 @@ class _ProfileScreenState extends State<ProfileScreen>
             error += ': Status ${response.statusCode}, Body: $responseBody';
           }
           if (mounted) _showSnackBar(error, isError: true);
-          print('Error: $error'); // Debug log
+          print('Error: $error');
           return null;
         }
       } catch (e) {
         if (mounted)
           _showSnackBar('Error parsing Cloudinary response: $e', isError: true);
-        print('Error parsing Cloudinary response: $e'); // Debug log
+        print('Error parsing Cloudinary response: $e');
         return null;
       }
     } catch (e) {
       if (mounted) _showSnackBar('Error uploading image: $e', isError: true);
-      print('Error in _uploadImageToCloudinary: $e'); // Debug log
+      print('Error in _uploadImageToCloudinary: $e');
       return null;
     }
   }
@@ -318,41 +256,41 @@ class _ProfileScreenState extends State<ProfileScreen>
     User? user = _auth.currentUser;
     if (user == null) {
       if (mounted) _showSnackBar('User not authenticated', isError: true);
-      print('Error: No authenticated user'); // Debug log
+      print('Error: No authenticated user');
       return;
     }
 
     try {
-      print('Saving profile image URL to Firestore'); // Debug log
+      print('Saving profile image URL to Firestore');
       await _firestore.collection('users').doc(user.uid).set({
         'profileImageUrl': imageUrl,
         'updatedAt': Timestamp.now(),
       }, SetOptions(merge: true));
-      print('Profile image saved successfully'); // Debug log
+      print('Profile image saved successfully');
     } catch (e) {
       if (mounted)
         _showSnackBar('Error saving profile image: $e', isError: true);
-      print('Error in _saveProfileImage: $e'); // Debug log
+      print('Error in _saveProfileImage: $e');
     }
   }
 
   Future<void> _saveUserData() async {
     if (!_formKey.currentState!.validate()) {
-      print('Form validation failed'); // Debug log
+      print('Form validation failed');
       return;
     }
 
     User? user = _auth.currentUser;
     if (user == null) {
       if (mounted) _showSnackBar('User not authenticated', isError: true);
-      print('Error: No authenticated user'); // Debug log
+      print('Error: No authenticated user');
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      print('Saving profile data to Firestore'); // Debug log
+      print('Saving profile data to Firestore');
       await _firestore.collection('users').doc(user.uid).set({
         'fullName': _nameController.text.trim(),
         'email': user.email ?? '',
@@ -373,14 +311,14 @@ class _ProfileScreenState extends State<ProfileScreen>
           _lastUpdated = DateTime.now();
         });
         _showSnackBar('Profile updated successfully', isError: false);
-        print('Profile data saved successfully'); // Debug log
+        print('Profile data saved successfully');
       }
     } catch (e) {
       if (mounted) {
         _showSnackBar('Error saving profile: $e', isError: true);
         setState(() => _isLoading = false);
       }
-      print('Error in _saveUserData: $e'); // Debug log
+      print('Error in _saveUserData: $e');
     }
   }
 
@@ -396,12 +334,12 @@ class _ProfileScreenState extends State<ProfileScreen>
         ),
       ),
     );
-    print('SnackBar: $message (isError: $isError)'); // Debug log
+    print('SnackBar: $message (isError: $isError)');
   }
 
   Future<void> _signOut() async {
     try {
-      print('Signing out user'); // Debug log
+      print('Signing out user');
       await _auth.signOut();
       if (mounted) {
         Navigator.pushReplacement(
@@ -411,7 +349,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       }
     } catch (e) {
       if (mounted) _showSnackBar('Error signing out: $e', isError: true);
-      print('Error in _signOut: $e'); // Debug log
+      print('Error in _signOut: $e');
     }
   }
 
@@ -466,7 +404,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     label: 'Gallery',
                     onTap: () {
                       Navigator.pop(context);
-                      _pickImage(ImageSource.gallery);
+                      _pickImageFromSource(ImageSource.gallery);
                     },
                   ),
                   Divider(height: 1.h, color: Colors.grey[300]),
@@ -475,7 +413,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                     label: 'Camera',
                     onTap: () {
                       Navigator.pop(context);
-                      _pickImage(ImageSource.camera);
+                      _pickImageFromSource(ImageSource.camera);
                     },
                   ),
                   Divider(height: 1.h, color: Colors.grey[300]),
