@@ -17,7 +17,7 @@ import 'dart:convert';
 
 // SosScreen: Stateful widget for emergency reporting
 class SosScreen extends StatefulWidget {
-  final int? selectedIndex; // Optional index for preselected emergency type
+  final int? selectedIndex;
 
   const SosScreen({Key? key, this.selectedIndex}) : super(key: key);
 
@@ -29,10 +29,10 @@ class SosScreen extends StatefulWidget {
 class _SosScreenState extends State<SosScreen>
     with SingleTickerProviderStateMixin {
   // State variables
-  int selectedIndex = -1; // Tracks selected emergency type
-  String currentLocation = "Fetching location..."; // Displays current location
-  String notes = ""; // User-entered notes
-  Position? _currentPosition; // Stores GPS coordinates
+  int selectedIndex = -1;
+  String currentLocation = "Fetching location...";
+  String notes = "";
+  Position? _currentPosition;
   // Emergency type options with icons, labels, and colors
   List<Map<String, dynamic>> gridItems = [
     {
@@ -60,12 +60,11 @@ class _SosScreenState extends State<SosScreen>
     {'icon': Icons.sos_rounded, 'label': 'SOS', 'color': Colors.red},
   ];
 
-  List<Map<String, dynamic>> mediaItems =
-      []; // Stores selected media (images/videos)
-  late AnimationController _animationController; // Controls animations
-  late Animation<double> _scaleAnimation; // Scale animation for buttons
-  late Animation<double> _fadeAnimation; // Fade animation for content
-  late Animation<Offset> _slideAnimation; // Slide animation for header
+  List<Map<String, dynamic>> mediaItems = [];
+  late AnimationController _animationController;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
 
   // Cloudinary configuration for media upload
   final String cloudName = 'dsojq0cm2';
@@ -294,6 +293,7 @@ class _SosScreenState extends State<SosScreen>
     bool isVideo = false,
   }) async {
     final picker = ImagePicker();
+    const int maxMediaLimit = 4; // Maximum of 4 media items allowed
 
     // Check camera permission if source is camera
     if (source == ImageSource.camera) {
@@ -320,8 +320,70 @@ class _SosScreenState extends State<SosScreen>
 
     try {
       print('Launching media picker for: $source, isVideo: $isVideo');
-      XFile? media;
-      if (source == ImageSource.camera) {
+      List<XFile>? mediaFiles = [];
+
+      if (source == ImageSource.gallery) {
+        // Multi-media selection from gallery (images and videos)
+        final List<XFile>? selectedMedia = await picker.pickMultipleMedia(
+          maxWidth: 512,
+          maxHeight: 512,
+          imageQuality: 80,
+        );
+        if (selectedMedia == null || selectedMedia.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'No media selected',
+                  style: GoogleFonts.poppins(fontSize: 15.sp),
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          print('No media selected');
+          return;
+        }
+
+        // Check if adding media exceeds limit
+        if (mediaItems.length + selectedMedia.length > maxMediaLimit) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'You can select up to $maxMediaLimit media items.',
+                  style: GoogleFonts.poppins(fontSize: 15.sp),
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          print(
+            'Media limit exceeded: ${mediaItems.length + selectedMedia.length}',
+          );
+          return;
+        }
+
+        mediaFiles = selectedMedia;
+      } else {
+        // Single image or video from camera
+        if (mediaItems.length >= maxMediaLimit) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'You can select up to $maxMediaLimit media items.',
+                  style: GoogleFonts.poppins(fontSize: 15.sp),
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          print('Media limit exceeded: ${mediaItems.length + 1}');
+          return;
+        }
+
+        XFile? media;
         if (isVideo) {
           media = await picker.pickVideo(source: source);
         } else {
@@ -332,56 +394,62 @@ class _SosScreenState extends State<SosScreen>
             imageQuality: 80,
           );
         }
-      } else {
-        media = await picker.pickImage(
-          source: source,
-          maxWidth: 512,
-          maxHeight: 512,
-          imageQuality: 80,
-        );
+
+        if (media == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  isVideo ? 'No video selected' : 'No image selected',
+                  style: GoogleFonts.poppins(fontSize: 15.sp),
+                ),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          print('No media selected');
+          return;
+        }
+
+        mediaFiles = [media];
       }
 
-      // Handle no media selected
-      if (media == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'No media selected',
-                style: GoogleFonts.poppins(fontSize: 15.sp),
+      // Verify and add media files
+      for (final media in mediaFiles) {
+        File mediaFile = File(media.path);
+        if (!await mediaFile.exists()) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Selected media file does not exist',
+                  style: GoogleFonts.poppins(fontSize: 15.sp),
+                ),
+                backgroundColor: Colors.red,
               ),
-              backgroundColor: Colors.red,
-            ),
+            );
+          }
+          print('Media file does not exist: ${media.path}');
+          continue;
+        }
+
+        // Determine if the file is a video based on extension
+        bool isVideoFile =
+            media.path.toLowerCase().endsWith('.mp4') ||
+            media.path.toLowerCase().endsWith('.mov') ||
+            media.path.toLowerCase().endsWith('.avi');
+
+        if (mounted) {
+          setState(() {
+            mediaItems.add({
+              'file': mediaFile,
+              'isVideo': isVideo || isVideoFile,
+            });
+          });
+          print(
+            'Media added: ${media.path}, isVideo: ${isVideo || isVideoFile}',
           );
         }
-        print('No media selected');
-        return;
-      }
-
-      // Verify file exists
-      File mediaFile = File(media.path);
-      if (!await mediaFile.exists()) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Selected media file does not exist',
-                style: GoogleFonts.poppins(fontSize: 15.sp),
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-        print('Media file does not exist: ${media.path}');
-        return;
-      }
-
-      // Add media to list
-      if (mounted) {
-        setState(() {
-          mediaItems.add({'file': mediaFile, 'isVideo': isVideo});
-        });
-        print('Media added: ${media.path}, isVideo: $isVideo');
       }
     } catch (e) {
       if (mounted) {
@@ -401,12 +469,82 @@ class _SosScreenState extends State<SosScreen>
 
   // Remove media from list
   void _removeMedia(int index) {
-    if (mounted) {
+    if (mounted && index >= 0 && index < mediaItems.length) {
       setState(() {
         mediaItems.removeAt(index);
       });
       print('Media removed at index: $index');
     }
+  }
+
+  // Show dialog to choose media source
+  void _showMediaSourceDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          title: Text(
+            'Select Media Source',
+            style: GoogleFonts.poppins(
+              fontSize: 18.sp,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: Icon(
+                  Icons.camera_alt_rounded,
+                  color: Colors.blue,
+                  size: 24.sp,
+                ),
+                title: Text(
+                  'Camera',
+                  style: GoogleFonts.poppins(fontSize: 16.sp),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickMediaFromSource(ImageSource.camera);
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  Icons.videocam_rounded,
+                  color: Colors.red,
+                  size: 24.sp,
+                ),
+                title: Text(
+                  'Video',
+                  style: GoogleFonts.poppins(fontSize: 16.sp),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickMediaFromSource(ImageSource.camera, isVideo: true);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.poppins(
+                  fontSize: 14.sp,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   // Submit emergency report to Cloudinary and Firebase
@@ -481,33 +619,39 @@ class _SosScreenState extends State<SosScreen>
             'Cloudinary response: status=${response.statusCode}, body=$responseBody',
           );
 
-          if (response.statusCode == 200) {
+          if (response.statusCode == 200 && data['secure_url'] != null) {
             mediaUrls.add(data['secure_url']);
             print('Upload successful: ${data['secure_url']}');
           } else {
-            print('Cloudinary upload error: ${data['error']['message']}');
+            print(
+              'Cloudinary upload error: ${data['error']?['message'] ?? 'Unknown error'}',
+            );
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Failed to upload media: ${data['error']?['message'] ?? 'Unknown error'}',
+                    style: GoogleFonts.poppins(fontSize: 15.sp),
+                  ),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+            return;
+          }
+        } catch (e) {
+          print('Cloudinary upload exception: $e');
+          if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  'Failed to upload media: ${data['error']['message']}',
+                  'Failed to upload media: $e',
                   style: GoogleFonts.poppins(fontSize: 15.sp),
                 ),
                 backgroundColor: Colors.red,
               ),
             );
-            return;
           }
-        } catch (e) {
-          print('Cloudinary upload exception: $e');
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Failed to upload media. Please try again.',
-                style: GoogleFonts.poppins(fontSize: 15.sp),
-              ),
-              backgroundColor: Colors.red,
-            ),
-          );
           return;
         }
       }
@@ -606,7 +750,7 @@ class _SosScreenState extends State<SosScreen>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [Colors.blue.shade50, Colors.white, Colors.red.shade50],
-            stops: const [0.0, 0.5, 1.0],
+            stops: [0.0, 0.5, 1.0],
           ),
         ),
         child: SafeArea(
@@ -718,75 +862,10 @@ class _SosScreenState extends State<SosScreen>
                         children: [
                           // Emergency type selection
                           _buildSectionHeader(
-                            "Emergency Type",
-                            Icons.category_rounded,
+                            title: "Emergency Type",
+                            icon: Icons.category_rounded,
                           ),
                           SizedBox(height: 12.h),
-                          GridView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 4,
-                                  crossAxisSpacing: 8.w,
-                                  mainAxisSpacing: 8.h,
-                                  childAspectRatio: 0.8,
-                                ),
-                            itemCount: gridItems.length,
-                            itemBuilder: (context, index) {
-                              return GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    selectedIndex = index;
-                                  });
-                                },
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color:
-                                        selectedIndex == index
-                                            ? gridItems[index]['color']
-                                                .withOpacity(0.1)
-                                            : Colors.white,
-                                    borderRadius: BorderRadius.circular(12.r),
-                                    border: Border.all(
-                                      color:
-                                          selectedIndex == index
-                                              ? gridItems[index]['color']
-                                              : Colors.grey.shade300,
-                                      width: 2,
-                                    ),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: Colors.grey.withOpacity(0.1),
-                                        blurRadius: 5,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        gridItems[index]['icon'],
-                                        color: gridItems[index]['color'],
-                                        size: 24.sp,
-                                      ),
-                                      SizedBox(height: 4.h),
-                                      Text(
-                                        gridItems[index]['label'],
-                                        style: GoogleFonts.poppins(
-                                          fontSize: 12.sp,
-                                          fontWeight: FontWeight.w600,
-                                          color: gridItems[index]['color'],
-                                        ),
-                                        textAlign: TextAlign.center,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
                           SizedBox(height: 12.h),
                           // Selected emergency type display
                           Container(
@@ -904,8 +983,8 @@ class _SosScreenState extends State<SosScreen>
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               _buildSectionHeader(
-                                "Current Location",
-                                Icons.location_on_rounded,
+                                title: "Current Location",
+                                icon: Icons.location_on_rounded,
                               ),
                               Container(
                                 padding: EdgeInsets.symmetric(
@@ -1038,8 +1117,8 @@ class _SosScreenState extends State<SosScreen>
                           SizedBox(height: 28.h),
                           // Media section
                           _buildSectionHeader(
-                            "Evidence & Media",
-                            Icons.photo_camera_rounded,
+                            title: "Evidence & Media",
+                            icon: Icons.photo_camera_rounded,
                             isOptional: true,
                           ),
                           SizedBox(height: 12.h),
@@ -1047,8 +1126,8 @@ class _SosScreenState extends State<SosScreen>
                           SizedBox(height: 28.h),
                           // Notes section
                           _buildSectionHeader(
-                            "Additional Details",
-                            Icons.notes_rounded,
+                            title: "Additional Details",
+                            icon: Icons.notes_rounded,
                             isOptional: true,
                           ),
                           SizedBox(height: 12.h),
@@ -1064,7 +1143,7 @@ class _SosScreenState extends State<SosScreen>
                                 BoxShadow(
                                   color: Colors.grey.shade100,
                                   blurRadius: 15,
-                                  offset: const Offset(0, 8),
+                                  offset: const Offset(0, 3),
                                 ),
                               ],
                             ),
@@ -1082,8 +1161,7 @@ class _SosScreenState extends State<SosScreen>
                                   fontSize: 14.sp,
                                   color: Colors.grey.shade500,
                                 ),
-                                filled: true,
-                                fillColor: Colors.transparent,
+                                filled: false,
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(16.r),
                                   borderSide: BorderSide.none,
@@ -1137,7 +1215,7 @@ class _SosScreenState extends State<SosScreen>
                                           color: Colors.red.shade300
                                               .withOpacity(0.5),
                                           blurRadius: 20,
-                                          offset: const Offset(0, 10),
+                                          offset: const Offset(0, 3),
                                         ),
                                       ]
                                       : [],
@@ -1151,12 +1229,13 @@ class _SosScreenState extends State<SosScreen>
                                 child: Container(
                                   padding: EdgeInsets.symmetric(
                                     horizontal: 20.w,
+                                    vertical: 16.h,
                                   ),
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Icon(
-                                        Icons.emergency_rounded,
+                                        Icons.emergency,
                                         color: Colors.white,
                                         size: 24.sp,
                                       ),
@@ -1190,9 +1269,9 @@ class _SosScreenState extends State<SosScreen>
   }
 
   // Build section header widget
-  Widget _buildSectionHeader(
-    String title,
-    IconData icon, {
+  Widget _buildSectionHeader({
+    required String title,
+    required IconData icon,
     bool isOptional = false,
   }) {
     return Row(
@@ -1203,7 +1282,7 @@ class _SosScreenState extends State<SosScreen>
             gradient: LinearGradient(
               colors: [Colors.blue.shade500, Colors.blue.shade700],
             ),
-            borderRadius: BorderRadius.circular(10.r),
+            borderRadius: BorderRadius.circular(8.r),
             boxShadow: [
               BoxShadow(
                 color: Colors.blue.shade200.withOpacity(0.5),
@@ -1219,25 +1298,25 @@ class _SosScreenState extends State<SosScreen>
           title,
           style: GoogleFonts.poppins(
             fontSize: 16.sp,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w500,
             color: Colors.black87,
           ),
         ),
         if (isOptional) ...[
           SizedBox(width: 8.w),
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+            padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
             decoration: BoxDecoration(
-              color: Colors.green.shade100,
-              borderRadius: BorderRadius.circular(12.r),
-              border: Border.all(color: Colors.green.shade300, width: 1),
+              color: Colors.grey.shade100,
+              borderRadius: BorderRadius.circular(8.r),
+              border: Border.all(color: Colors.grey.shade300, width: 1),
             ),
             child: Text(
               "Optional",
               style: GoogleFonts.poppins(
                 fontSize: 10.sp,
                 fontWeight: FontWeight.w500,
-                color: Colors.green.shade700,
+                color: Colors.grey.shade600,
               ),
             ),
           ),
@@ -1246,7 +1325,7 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
-  // Build media selection section
+  // Build media section
   Widget _buildPremiumMediaSection() {
     return Container(
       padding: EdgeInsets.all(20.w),
@@ -1258,7 +1337,7 @@ class _SosScreenState extends State<SosScreen>
           BoxShadow(
             color: Colors.grey.shade100,
             blurRadius: 20,
-            offset: const Offset(0, 10),
+            offset: const Offset(0, 3),
           ),
         ],
       ),
@@ -1346,9 +1425,18 @@ class _SosScreenState extends State<SosScreen>
                     mainAxisSpacing: 12.h,
                     childAspectRatio: 1,
                   ),
-                  itemCount: mediaItems.length,
+                  itemCount:
+                      mediaItems.length < 4
+                          ? mediaItems.length + 1
+                          : mediaItems.length,
                   itemBuilder: (context, index) {
-                    return _buildMediaPreview(index);
+                    if (index == mediaItems.length && mediaItems.length < 4) {
+                      return _buildAddMediaButton();
+                    }
+                    if (index < mediaItems.length) {
+                      return _buildMediaPreview(index);
+                    }
+                    return const SizedBox.shrink();
                   },
                 ),
               ],
@@ -1393,7 +1481,6 @@ class _SosScreenState extends State<SosScreen>
                     style: GoogleFonts.poppins(
                       fontSize: 12.sp,
                       color: Colors.grey.shade500,
-                      height: 1.4,
                     ),
                   ),
                 ],
@@ -1459,8 +1546,39 @@ class _SosScreenState extends State<SosScreen>
     );
   }
 
+  // Build add media button widget
+  Widget _buildAddMediaButton() {
+    return GestureDetector(
+      onTap: _showMediaSourceDialog,
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: Colors.grey.shade300, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Center(
+          child: Icon(
+            Icons.add_circle_outline_rounded,
+            color: Colors.grey.shade600,
+            size: 32.sp,
+          ),
+        ),
+      ),
+    );
+  }
+
   // Build media preview widget
   Widget _buildMediaPreview(int index) {
+    if (index < 0 || index >= mediaItems.length) {
+      return const SizedBox.shrink();
+    }
     final media = mediaItems[index];
     final file = media['file'] as File;
     final isVideo = media['isVideo'] as bool;

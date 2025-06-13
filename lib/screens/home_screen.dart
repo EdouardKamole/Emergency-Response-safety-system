@@ -85,7 +85,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           userName = userData?['fullName'] ?? user.email ?? "Guest";
           _isLoadingUserData = false;
         });
-        print('User data loaded: $userName');
       } else {
         if (mounted) {
           setState(() {
@@ -94,7 +93,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           });
           _showSnackBar("No user data found", isError: false);
         }
-        print('No user data found in Firestore');
       }
     } catch (e) {
       if (mounted) {
@@ -104,7 +102,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
         _showSnackBar("Error fetching user data: $e", isError: true);
       }
-      print('Error in _fetchUserData: $e');
     }
   }
 
@@ -389,6 +386,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                         )
                         : Text(
                           userName.isEmpty ? "Guest" : userName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: GoogleFonts.poppins(
                             fontSize: 24.sp,
                             color: Colors.white,
